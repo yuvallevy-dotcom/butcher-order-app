@@ -1465,8 +1465,9 @@ function screenOrderChecklist(){
   const branch = findBranch(state.order.branchId);
   const supplier = findSupplier(state.order.supplierId);
   const count = selectedCount();
+  const topAction = `<button class="btn btn-primary btn-sm" ${count===0?'disabled':''} onclick="goToConfirm()">לאישור ההזמנה</button>`;
   return `
-  ${topbar(supplier.name, branch.name + ' · ' + dateLabel(state.order.date, state.order.noDate), "goTo('order-supplier')")}
+  ${topbar(supplier.name, branch.name + ' · ' + dateLabel(state.order.date, state.order.noDate), "goTo('order-supplier')", topAction)}
   ${stepIndicator(3)}
   <div class="content">
     ${supplier.products.length>4 ? `<div class="field"><input id="f-checklist-search" type="text" placeholder="🔍 חיפוש מוצר..." value="${state.checklistSearch||''}" oninput="filterChecklistRows(this.value)"></div>` : ''}
