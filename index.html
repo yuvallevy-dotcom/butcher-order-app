@@ -364,12 +364,15 @@ const isConfigured = !SUPABASE_URL.includes('YOUR-PROJECT') && !SUPABASE_ANON_KE
 const sb = isConfigured ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
 const APP_PASSCODE = '1122334455!';
+const ADMIN_PASSCODE = 'yuvi22489264';
 
 /* ---------------- Data ---------------- */
 let state = {
   screen: 'home',
   unlocked: false,
   passcodeError: false,
+  adminUnlocked: false,
+  adminPasscodeError: false,
   configured: isConfigured,
   loading: true,
   errorMsg: null,
@@ -988,8 +991,10 @@ function renderScreen(){
   if(!state.unlocked) return screenLock();
   if(!state.configured) return screenSetupNeeded();
   if(state.loading) return screenLoading();
+  if(state.screen.startsWith('admin-') && state.screen!=='admin-lock' && !state.adminUnlocked) return screenAdminLock();
   switch(state.screen){
     case 'home': return screenHome();
+    case 'admin-lock': return screenAdminLock();
     case 'admin-suppliers': return screenAdminSuppliers();
     case 'admin-supplier-form': return screenSupplierForm();
     case 'admin-products': return screenAdminProducts();
@@ -1024,6 +1029,28 @@ function checkPasscode(){
   const val = document.getElementById('f-passcode').value;
   if(val === APP_PASSCODE){ state.unlocked = true; state.passcodeError = false; if(state.configured) loadAllData(); else render(); }
   else { state.passcodeError = true; render(); }
+}
+
+function screenAdminLock(){
+  return `
+  ${topbar('ניהול', 'אזור מוגן', "goHome()")}
+  <div class="content" style="display:flex;flex-direction:column;justify-content:center;min-height:70vh;gap:14px;text-align:center;">
+    <div style="font-size:36px">🔒</div>
+    <div style="color:var(--ink-soft);font-size:14px;margin-bottom:6px">הזן קוד גישה לניהול</div>
+    <input id="f-admin-passcode" type="password" placeholder="קוד גישה" autocomplete="off"
+      style="text-align:center;font-size:18px;padding:14px;border-radius:12px;border:1.5px solid var(--border);font-family:'Heebo'"
+      onkeydown="if(event.key==='Enter') checkAdminPasscode()">
+    <button class="btn btn-primary btn-block" onclick="checkAdminPasscode()">כניסה</button>
+    ${state.adminPasscodeError ? `<div style="color:var(--accent);font-size:13px;font-weight:600">קוד שגוי, נסה שוב</div>` : ''}
+  </div>`;
+}
+function enterAdmin(){
+  if(state.adminUnlocked) goTo('admin-suppliers'); else goTo('admin-lock');
+}
+function checkAdminPasscode(){
+  const val = document.getElementById('f-admin-passcode').value;
+  if(val === ADMIN_PASSCODE){ state.adminUnlocked = true; state.adminPasscodeError = false; goTo('admin-suppliers'); }
+  else { state.adminPasscodeError = true; render(); }
 }
 
 function screenLoading(){
@@ -1077,7 +1104,7 @@ function screenHome(){
       </div>
       <div class="arrow">‹</div>
     </div>
-    <div class="tile admin" onclick="goTo('admin-suppliers')">
+    <div class="tile admin" onclick="enterAdmin()">
       <div class="icon">⚙️</div>
       <div>
         <div class="t">ניהול</div>
