@@ -1016,7 +1016,7 @@ function renderScreen(){
 function screenLock(){
   return `<div class="content" style="display:flex;flex-direction:column;justify-content:center;min-height:92vh;gap:14px;text-align:center;">
     <div style="width:44px;height:44px;margin:0 auto;">${ICON_CLEAVER}</div>
-    <div style="font-weight:800;font-size:19px;font-family:'Rubik'">קצביה ב</div>
+    <div style="font-weight:800;font-size:19px;font-family:'Rubik'">קצביית הרשת</div>
     <div style="color:var(--ink-soft);font-size:14px;margin-bottom:6px">הזן קוד גישה כדי להמשיך</div>
     <input id="f-passcode" type="password" placeholder="קוד גישה" autocomplete="off"
       style="text-align:center;font-size:18px;padding:14px;border-radius:12px;border:1.5px solid var(--border);font-family:'Heebo'"
@@ -1240,7 +1240,7 @@ function screenProductForm(){
       <label>שם המוצר</label>
       <input id="f-prod-name" type="text" placeholder="לדוגמה: גליל נייר" value="${editing ? editing.name : ''}">
     </div>
-    <div style="font-size:12.5px;color:var(--ink-soft);margin-bottom:14px">את יחידת המידה (יחידות / ארגז / קרטון) בוחרים בזמן ההזמנה, לכל מוצר בנפרד.</div>
+    <div style="font-size:12.5px;color:var(--ink-soft);margin-bottom:14px">את יחידת המידה (יחידות / ארגז) בוחרים בזמן ההזמנה, לכל מוצר בנפרד.</div>
     <button class="btn btn-primary btn-block" onclick="saveProductForm()">שמירה</button>
   </div>`;
 }
@@ -1416,7 +1416,7 @@ function screenOrderSupplier(){
 }
 
 function renderChecklistRows(supplier, search){
-  const UNITS = ['יחידות','ארגז','קרטון'];
+  const UNITS = ['יחידות','ארגז'];
   const term = (search||'').trim().toLowerCase();
   const filtered = term ? supplier.products.filter(p => p.name.toLowerCase().includes(term)) : supplier.products;
 
@@ -1494,9 +1494,8 @@ function screenOrderConfirm(){
   const items = buildItemsFromCurrentOrder();
   const lines = renderTicketLines(items);
   const confirmBtnLabel = state.confirming ? 'שומר…' : 'אישור הזמנה';
-  const topAction = `<button class="btn btn-primary btn-sm" ${state.confirming?'disabled':''} onclick="confirmOrder()">${confirmBtnLabel}</button>`;
   return `
-  ${topbar('אישור הזמנה', 'שלב אחרון לפני השמירה', "goTo('order-checklist')", topAction)}
+  ${topbar('אישור הזמנה', 'שלב אחרון לפני השמירה', "goTo('order-checklist')")}
   ${stepIndicator(4)}
   <div class="content">
     <div class="ticket-wrap">
