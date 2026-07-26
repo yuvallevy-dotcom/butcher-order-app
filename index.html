@@ -58,19 +58,18 @@
     padding:16px 18px;
     display:flex; align-items:center; gap:12px;
   }
-  .topbar .back{
-    width:38px;height:38px;flex:none;
-    border-radius:50%;
+  .back-btn{
+    display:flex;align-items:center;gap:5px;flex:none;
+    padding:8px 12px;border-radius:20px;
     border:1.5px solid var(--border);
-    background:var(--surface);
-    display:flex;align-items:center;justify-content:center;
-    cursor:pointer;
-    color:var(--ink);
-    font-size:18px;
+    background:var(--surface);color:var(--ink);
+    font-size:13.5px;font-weight:700;
+    cursor:pointer;white-space:nowrap;
     -webkit-tap-highlight-color:transparent;
   }
-  .topbar .back:active{background:var(--bg);}
-  .topbar h1{font-size:18px;margin:0;font-weight:700;flex:1;}
+  .back-btn:active{background:var(--bg);}
+  .back-btn .arrow{font-size:15px;line-height:1;}
+  .topbar h1{font-size:18px;margin:0;font-weight:700;}
   .topbar .sub{font-size:12px;color:var(--ink-soft);margin-top:2px;font-weight:500;}
 
   .brand{
@@ -574,8 +573,8 @@ function buildMessageForOrder(order){
   const branch = findBranch(order.branchId);
   const lines = [];
   const head = order.noDate
-    ? 'היי, הזמנה עבור קצביית ' + (branch?branch.name:'') + ':'
-    : 'היי, הזמנה ליום ' + formatDateHe(order.date) + ' עבור קצביית ' + (branch?branch.name:'') + ':';
+    ? 'היי, הזמנה לקצביה ב' + (branch?branch.name:'') + ':'
+    : 'היי, הזמנה לקצביה ב' + (branch?branch.name:'') + ' ליום ' + formatDateHe(order.date) + ':';
   lines.push(head);
   order.items.forEach(it=>{
     let line = '- ' + it.qty + ' ' + it.unit + ' ' + it.name;
@@ -977,13 +976,14 @@ const ICON_CLEAVER = `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.
 </svg>`;
 
 /* ---------------- Renderers ---------------- */
-function topbar(title, sub, onBack){
+function topbar(title, sub, onBack, actionHtml){
   return `<div class="topbar">
-    ${onBack ? `<div class="back" onclick="${onBack}">›</div>` : `<div style="width:38px"></div>`}
-    <div>
+    ${onBack ? `<div class="back-btn" onclick="${onBack}"><span class="arrow">→</span><span>חזור</span></div>` : `<div style="width:12px"></div>`}
+    <div style="flex:1;min-width:0">
       <h1>${title}</h1>
       ${sub ? `<div class="sub">${sub}</div>` : ''}
     </div>
+    ${actionHtml || ''}
   </div>`;
 }
 
@@ -1492,16 +1492,18 @@ function screenOrderConfirm(){
   const supplier = findSupplier(state.order.supplierId);
   const items = buildItemsFromCurrentOrder();
   const lines = renderTicketLines(items);
+  const confirmBtnLabel = state.confirming ? 'שומר…' : 'אישור הזמנה';
+  const topAction = `<button class="btn btn-primary btn-sm" ${state.confirming?'disabled':''} onclick="confirmOrder()">${confirmBtnLabel}</button>`;
   return `
-  ${topbar('אישור הזמנה', 'שלב אחרון לפני השמירה', "goTo('order-checklist')")}
+  ${topbar('אישור הזמנה', 'שלב אחרון לפני השמירה', "goTo('order-checklist')", topAction)}
   ${stepIndicator(4)}
   <div class="content">
     <div class="ticket-wrap">
       <div class="ticket">
         <div class="stamp">מוכן לאישור</div>
         <div class="t-head">${state.order.noDate
-            ? 'היי, הזמנה עבור קצביית <b>'+branch.name+'</b>, מול <b>'+supplier.name+'</b>:'
-            : 'היי, הזמנה ליום <b>'+formatDateHe(state.order.date)+'</b><br>עבור קצביית <b>'+branch.name+'</b>, מול <b>'+supplier.name+'</b>:'}</div>
+            ? 'היי, הזמנה לקצביה ב<b>'+branch.name+'</b>, מול <b>'+supplier.name+'</b>:'
+            : 'היי, הזמנה לקצביה ב<b>'+branch.name+'</b>, מול <b>'+supplier.name+'</b><br>ליום <b>'+formatDateHe(state.order.date)+'</b>:'}</div>
         ${lines}
         <div class="t-foot">לאחר האישור תוכל לבחור איך ומתי לשלוח את ההזמנה לספק</div>
       </div>
@@ -1509,7 +1511,7 @@ function screenOrderConfirm(){
   </div>
   <div class="footer-bar" style="gap:10px;">
     <button class="btn btn-secondary" style="flex:1" onclick="goTo('order-checklist')">חזרה לעריכה</button>
-    <button class="btn btn-primary" style="flex:1.4" ${state.confirming?'disabled':''} onclick="confirmOrder()">${state.confirming ? 'שומר…' : 'אישור ההזמנה'}</button>
+    <button class="btn btn-primary" style="flex:1.4" ${state.confirming?'disabled':''} onclick="confirmOrder()">${confirmBtnLabel}</button>
   </div>`;
 }
 
@@ -1530,8 +1532,8 @@ function screenOrderSend(){
       <div class="ticket">
         <div class="stamp">מאושר</div>
         <div class="t-head">${order.noDate
-            ? 'היי, הזמנה עבור קצביית <b>'+(branch?branch.name:'—')+'</b>, מול <b>'+(supplier?supplier.name:'—')+'</b>:'
-            : 'היי, הזמנה ליום <b>'+formatDateHe(order.date)+'</b><br>עבור קצביית <b>'+(branch?branch.name:'—')+'</b>, מול <b>'+(supplier?supplier.name:'—')+'</b>:'}</div>
+            ? 'היי, הזמנה לקצביה ב<b>'+(branch?branch.name:'—')+'</b>, מול <b>'+(supplier?supplier.name:'—')+'</b>:'
+            : 'היי, הזמנה לקצביה ב<b>'+(branch?branch.name:'—')+'</b>, מול <b>'+(supplier?supplier.name:'—')+'</b><br>ליום <b>'+formatDateHe(order.date)+'</b>:'}</div>
         ${lines}
       </div>
     </div>
@@ -1590,8 +1592,8 @@ function screenOrderHistoryDetail(){
   const supplier = findSupplier(order.supplierId);
   const lines = renderTicketLines(order.items);
   const head = order.noDate
-    ? 'היי, הזמנה עבור קצביית <b>'+(branch?branch.name:'—')+'</b>, מול <b>'+(supplier?supplier.name:'—')+'</b>:'
-    : 'היי, הזמנה ליום <b>'+formatDateHe(order.date)+'</b><br>עבור קצביית <b>'+(branch?branch.name:'—')+'</b>, מול <b>'+(supplier?supplier.name:'—')+'</b>:';
+    ? 'היי, הזמנה לקצביה ב<b>'+(branch?branch.name:'—')+'</b>, מול <b>'+(supplier?supplier.name:'—')+'</b>:'
+    : 'היי, הזמנה לקצביה ב<b>'+(branch?branch.name:'—')+'</b>, מול <b>'+(supplier?supplier.name:'—')+'</b><br>ליום <b>'+formatDateHe(order.date)+'</b>:';
   return `
   ${topbar('פרטי הזמנה', formatCreatedAt(order.createdAt), "goTo('order-history')")}
   <div class="content">
