@@ -376,6 +376,7 @@ let state = {
   sendOrderId: null,
   confirming: false,
   successMsg: null,
+  copiedOrderId: null,
 };
 
 const HE_DAYS = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
@@ -614,7 +615,7 @@ async function copyOrderText(orderId){
   const text = buildMessageForOrder(order);
   try{
     await navigator.clipboard.writeText(text);
-    showSuccess('ההזמנה הועתקה');
+    markCopied(orderId);
   }catch(err){
     try{
       const ta = document.createElement('textarea');
@@ -622,12 +623,17 @@ async function copyOrderText(orderId){
       document.body.appendChild(ta); ta.select();
       document.execCommand('copy');
       document.body.removeChild(ta);
-      showSuccess('ההזמנה הועתקה');
+      markCopied(orderId);
     }catch(e2){
       showError('ההעתקה נכשלה — אפשר לסמן את הטקסט למעלה ולהעתיק ידנית');
     }
   }
   markOrderSent(orderId);
+}
+function markCopied(orderId){
+  state.copiedOrderId = orderId;
+  showSuccess('ההזמנה הועתקה');
+  setTimeout(()=>{ if(state.copiedOrderId===orderId){ state.copiedOrderId = null; render(); } }, 2200);
 }
 async function markOrderSent(orderId){
   const order = state.orders.find(o=>o.id===orderId);
@@ -1360,7 +1366,7 @@ function screenOrderSend(){
         ? `<button class="btn wa-btn btn-block" onclick="sendToContact('${order.id}')">📱 שליחה ל${supplier.name} (${supplier.phone})</button>`
         : `<div class="empty" style="padding:10px"><div class="e-sub">לא הוגדר מספר טלפון לספק זה</div></div>`}
       <button class="btn btn-secondary btn-block" onclick="sendToGroup('${order.id}')">👥 שליחה לקבוצה בוואטסאפ</button>
-      <button class="btn btn-secondary btn-block" onclick="copyOrderText('${order.id}')">📋 העתקת ההזמנה</button>
+      <button class="btn ${state.copiedOrderId===order.id?'btn-success':'btn-secondary'} btn-block" onclick="copyOrderText('${order.id}')">${state.copiedOrderId===order.id ? '✓ הועתק!' : '📋 העתקת ההזמנה'}</button>
     </div>
   </div>
   <div class="footer-bar" style="gap:10px;">
