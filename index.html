@@ -1,0 +1,1440 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>הזמנות סחורה — קצביה</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700&family=Rubik:wght@500;700;800&family=JetBrains+Mono:wght@600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --bg:#F5F3EF;
+    --surface:#FFFFFF;
+    --ink:#211D1A;
+    --ink-soft:#79726A;
+    --border:#E6E1D8;
+    --accent:#A32638;
+    --accent-dark:#7C1C2A;
+    --accent-soft:#F6E4E6;
+    --wood:#C9A574;
+    --success:#3F7A5C;
+    --success-soft:#E7F0EA;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:'Heebo',sans-serif;
+    -webkit-font-smoothing:antialiased;
+    min-height:100vh;
+  }
+  h1,h2,h3,.display{font-family:'Rubik',sans-serif;}
+  .mono{font-family:'JetBrains Mono',monospace;}
+
+  .app-shell{
+    max-width:480px;
+    margin:0 auto;
+    min-height:100vh;
+    background:var(--surface);
+    position:relative;
+    display:flex;
+    flex-direction:column;
+    box-shadow:0 0 60px rgba(0,0,0,0.06);
+  }
+  @media (min-width:520px){
+    body{padding:24px 0;}
+    .app-shell{min-height:calc(100vh - 48px);border-radius:20px;overflow:hidden;}
+  }
+
+  /* Top bar */
+  .topbar{
+    position:sticky; top:0; z-index:20;
+    background:var(--surface);
+    border-bottom:1px solid var(--border);
+    padding:16px 18px;
+    display:flex; align-items:center; gap:12px;
+  }
+  .topbar .back{
+    width:38px;height:38px;flex:none;
+    border-radius:50%;
+    border:1.5px solid var(--border);
+    background:var(--surface);
+    display:flex;align-items:center;justify-content:center;
+    cursor:pointer;
+    color:var(--ink);
+    font-size:18px;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .topbar .back:active{background:var(--bg);}
+  .topbar h1{font-size:18px;margin:0;font-weight:700;flex:1;}
+  .topbar .sub{font-size:12px;color:var(--ink-soft);margin-top:2px;font-weight:500;}
+
+  .brand{
+    display:flex;align-items:center;gap:10px;padding:22px 18px 6px;
+  }
+  .brand svg{width:34px;height:34px;flex:none;}
+  .brand .name{font-family:'Rubik';font-weight:800;font-size:20px;}
+  .brand .tag{font-size:12px;color:var(--ink-soft);font-weight:500;}
+
+  .content{flex:1;padding:16px 18px 100px;}
+  .content.no-pad-bottom{padding-bottom:16px;}
+
+  /* Buttons */
+  .btn{
+    font-family:'Heebo';
+    font-weight:700;
+    font-size:16px;
+    border-radius:14px;
+    padding:15px 18px;
+    border:none;
+    cursor:pointer;
+    display:flex;align-items:center;justify-content:center;gap:8px;
+    -webkit-tap-highlight-color:transparent;
+    transition:transform .05s ease;
+  }
+  .btn:active{transform:scale(0.98);}
+  .btn-primary{background:var(--accent);color:#fff;}
+  .btn-primary:disabled{background:#D8CFC8;color:#a39c93;cursor:not-allowed;}
+  .btn-secondary{background:var(--surface);color:var(--ink);border:1.5px solid var(--border);}
+  .btn-ghost{background:transparent;color:var(--accent);font-weight:700;}
+  .btn-success{background:var(--success);color:#fff;}
+  .btn-block{width:100%;}
+  .btn-sm{padding:9px 14px;font-size:13px;border-radius:10px;}
+
+  /* Big tile choice (home) */
+  .tile{
+    display:flex;align-items:center;gap:16px;
+    background:var(--surface);
+    border:1.5px solid var(--border);
+    border-radius:18px;
+    padding:20px;
+    margin-bottom:14px;
+    cursor:pointer;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .tile:active{background:var(--bg);}
+  .tile .icon{
+    width:52px;height:52px;border-radius:14px;flex:none;
+    display:flex;align-items:center;justify-content:center;
+    font-size:24px;
+  }
+  .tile.order .icon{background:var(--accent-soft);color:var(--accent);}
+  .tile.admin .icon{background:#F1EBDD;color:var(--wood);}
+  .tile.history .icon{background:var(--success-soft);color:var(--success);}
+  .tile .t{font-weight:700;font-size:16px;}
+  .tile .d{font-size:13px;color:var(--ink-soft);margin-top:2px;}
+  .tile .arrow{margin-right:auto;color:var(--ink-soft);font-size:18px;}
+
+  /* Step indicator */
+  .steps{display:flex;flex-direction:row-reverse;gap:6px;padding:0 18px 14px;}
+  .step{flex:1;height:5px;border-radius:3px;background:var(--border);}
+  .step.done{background:var(--accent);}
+  .step.active{background:var(--accent);opacity:.55;}
+
+  /* Card / list row */
+  .card{
+    background:var(--surface);
+    border:1.5px solid var(--border);
+    border-radius:16px;
+    padding:16px;
+    margin-bottom:12px;
+  }
+  .row-select{
+    display:flex;align-items:center;justify-content:space-between;
+    background:var(--surface);
+    border:1.5px solid var(--border);
+    border-radius:14px;
+    padding:16px;
+    margin-bottom:10px;
+    cursor:pointer;
+  }
+  .row-select.active{border-color:var(--accent);background:var(--accent-soft);}
+  .row-select .main{font-weight:700;font-size:15px;}
+  .row-select .meta{font-size:12px;color:var(--ink-soft);margin-top:3px;}
+  .row-select .check{
+    width:24px;height:24px;border-radius:50%;border:2px solid var(--border);
+    flex:none;display:flex;align-items:center;justify-content:center;font-size:13px;color:#fff;
+  }
+  .row-select.active .check{background:var(--accent);border-color:var(--accent);}
+
+  .list-item{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:12px 2px;
+    border-bottom:1px solid var(--border);
+  }
+  .list-item:last-child{border-bottom:none;}
+  .list-item .info .name{font-weight:600;font-size:15px;}
+  .list-item .info .meta{font-size:12px;color:var(--ink-soft);margin-top:2px;}
+  .list-item .acts{display:flex;gap:6px;flex:none;}
+  .icon-btn{
+    width:32px;height:32px;border-radius:9px;border:1.5px solid var(--border);
+    background:var(--surface);display:flex;align-items:center;justify-content:center;
+    color:var(--ink-soft);cursor:pointer;font-size:14px;
+  }
+  .icon-btn.danger{color:var(--accent);}
+
+  /* Checklist stepper */
+  .item-row{
+    display:flex;flex-direction:column;gap:10px;
+    background:var(--surface);
+    border:1.5px solid var(--border);
+    border-radius:16px;
+    padding:14px;
+    margin-bottom:10px;
+    transition:border-color .15s;
+  }
+  .item-row.qty-active{border-color:var(--success);background:var(--success-soft);}
+  .item-top{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+  .item-row .name{font-weight:700;font-size:15px;}
+  .note-toggle{
+    flex:none;width:32px;height:32px;border-radius:9px;
+    border:1.5px solid var(--border);background:var(--surface);
+    display:flex;align-items:center;justify-content:center;
+    font-size:14px;cursor:pointer;color:var(--ink-soft);
+    -webkit-tap-highlight-color:transparent;
+  }
+  .note-toggle.has-note{border-color:var(--wood);color:var(--wood);background:#FBF4E8;}
+  .note-preview{
+    font-size:13px;color:var(--ink-soft);
+    background:rgba(0,0,0,0.02);border-radius:10px;padding:8px 10px;
+    display:flex;align-items:flex-start;gap:6px;
+  }
+  .note-preview b{color:var(--ink);font-weight:700;}
+  .note-input{
+    width:100%;padding:10px 12px;border-radius:10px;border:1.5px solid var(--border);
+    font-family:'Heebo';font-size:13.5px;background:var(--surface);color:var(--ink);
+  }
+  .note-input:focus{outline:none;border-color:var(--wood);}
+  .item-bottom{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+  .unit-toggle{display:flex;gap:6px;flex:1;}
+  .unit-btn{
+    flex:1;text-align:center;padding:8px 4px;border-radius:10px;
+    border:1.5px solid var(--border);background:var(--surface);color:var(--ink-soft);
+    font-size:12.5px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;
+  }
+  .unit-btn.active{background:var(--ink);color:#fff;border-color:var(--ink);}
+  .stepper{display:flex;align-items:center;gap:2px;flex:none;}
+  .stepper button{
+    width:38px;height:38px;border-radius:50%;
+    border:1.5px solid var(--accent);
+    background:var(--surface);color:var(--accent);
+    font-size:20px;font-weight:700;line-height:1;
+    display:flex;align-items:center;justify-content:center;
+    cursor:pointer;-webkit-tap-highlight-color:transparent;
+  }
+  .stepper button:active{background:var(--accent-soft);}
+  .stepper .qty{
+    width:38px;text-align:center;font-size:18px;font-weight:700;
+    border:none;background:transparent;color:var(--ink);
+  }
+
+  /* Sticky footer bar */
+  .footer-bar{
+    position:sticky;bottom:0;z-index:15;
+    background:var(--surface);
+    border-top:1px solid var(--border);
+    padding:12px 18px calc(12px + env(safe-area-inset-bottom));
+    display:flex;align-items:center;gap:12px;
+    max-width:480px;margin:0 auto;width:100%;
+  }
+  .footer-bar .count{font-size:13px;color:var(--ink-soft);flex:none;white-space:nowrap;}
+  .footer-bar .count b{color:var(--ink);font-family:'JetBrains Mono';}
+
+  /* Form fields */
+  .field{margin-bottom:14px;}
+  .field label{display:block;font-size:13px;font-weight:600;color:var(--ink-soft);margin-bottom:6px;}
+  .field input, .field select{
+    width:100%;padding:13px 14px;border-radius:12px;border:1.5px solid var(--border);
+    font-family:'Heebo';font-size:15px;background:var(--surface);color:var(--ink);
+  }
+  .field input:focus, .field select:focus{outline:none;border-color:var(--accent);}
+
+  .empty{
+    text-align:center;padding:40px 20px;color:var(--ink-soft);
+  }
+  .empty .e-icon{font-size:36px;margin-bottom:10px;}
+  .empty .e-title{font-weight:700;color:var(--ink);margin-bottom:4px;}
+  .empty .e-sub{font-size:13px;}
+
+  .fab-add{
+    display:flex;align-items:center;justify-content:center;gap:8px;
+    width:100%;padding:14px;border-radius:14px;
+    border:1.5px dashed var(--border);
+    background:transparent;color:var(--accent);font-weight:700;font-size:15px;
+    cursor:pointer;margin-top:4px;
+  }
+
+  .tabs{display:flex;gap:8px;margin-bottom:16px;}
+  .tab{
+    flex:1;text-align:center;padding:10px;border-radius:12px;
+    font-weight:700;font-size:14px;cursor:pointer;
+    background:var(--bg);color:var(--ink-soft);
+  }
+  .tab.active{background:var(--accent);color:#fff;}
+
+  /* Ticket / preview */
+  .ticket-wrap{padding-top:6px;}
+  .ticket{
+    position:relative;
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:6px;
+    padding:26px 20px 24px;
+    box-shadow:0 8px 24px rgba(33,29,26,0.08);
+  }
+  .ticket::before{
+    content:'';
+    position:absolute;top:-1px;right:0;left:0;height:12px;
+    background-image:radial-gradient(circle 6px at 12px 0, var(--bg) 6px, transparent 7px);
+    background-repeat:repeat-x;
+    background-position:top;
+    background-size:24px 12px;
+  }
+  .stamp{
+    position:absolute; top:22px; left:18px;
+    border:3px solid var(--accent);
+    color:var(--accent);
+    font-family:'Rubik';font-weight:800;font-size:12.5px;
+    padding:6px 10px;border-radius:8px;
+    transform:rotate(-9deg);
+    opacity:0.9;
+    white-space:nowrap;
+  }
+  .ticket .t-head{font-size:14px;line-height:1.7;margin-bottom:14px;padding-left:70px;}
+  .ticket .t-head b{font-weight:700;}
+  .ticket .t-item{border-bottom:1px dashed var(--border);padding:9px 0;}
+  .ticket .t-item:last-child{border-bottom:none;}
+  .ticket .t-line{display:flex;justify-content:space-between;gap:10px;font-size:14.5px;}
+  .ticket .t-line .pname{font-weight:600;}
+  .ticket .t-line .pqty{font-family:'JetBrains Mono';font-weight:700;white-space:nowrap;color:var(--accent-dark);}
+  .ticket .t-note{font-size:12.5px;color:var(--ink-soft);padding-top:5px;}
+  .ticket .t-note b{color:var(--ink);}
+  .ticket .t-foot{margin-top:16px;font-size:11.5px;color:var(--ink-soft);text-align:center;}
+
+  .wa-btn{
+    background:#25D366;color:#fff;
+  }
+  .err-banner{
+    background:#FDEDEE;color:var(--accent-dark);
+    padding:10px 16px;font-size:13px;font-weight:600;text-align:center;
+    border-bottom:1px solid var(--accent-soft);
+  }
+  .ok-banner{
+    background:var(--success-soft);color:var(--success);
+    padding:10px 16px;font-size:13px;font-weight:600;text-align:center;
+    border-bottom:1px solid var(--success);
+  }
+</style>
+</head>
+<body>
+<div id="app" class="app-shell"></div>
+
+<script>
+/* ================= Supabase config =================
+   1. Create a free project at https://supabase.com
+   2. Run the accompanying supabase-schema.sql in the SQL editor
+   3. Project Settings → API → copy the Project URL and the anon public key below
+*/
+const SUPABASE_URL = 'https://fqcdpwgfjwmamtfxddwa.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZxY2Rwd2dmandtYW10ZnhkZHdhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ3MDQ3MTAsImV4cCI6MjEwMDI4MDcxMH0.pvzUHZpVlGJ3rBYgkpHL3OiT64gske6ASNckIjuedCs';
+
+const isConfigured = !SUPABASE_URL.includes('YOUR-PROJECT') && !SUPABASE_ANON_KEY.includes('YOUR-ANON');
+const sb = isConfigured ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+
+const APP_PASSCODE = '1122334455!';
+
+/* ---------------- Data ---------------- */
+let state = {
+  screen: 'home',
+  unlocked: false,
+  passcodeError: false,
+  configured: isConfigured,
+  loading: true,
+  errorMsg: null,
+
+  suppliers: [],
+  branches: [],
+
+  adminTab: 'suppliers',
+  editingSupplierId: null,
+  editingProductSupplierId: null,
+  editingProductId: null,
+  editingBranchId: null,
+
+  importSupplierId: null,
+  importRows: null,       // parsed rows waiting for confirmation: [{name, include}]
+  importFileName: null,
+  importing: false,
+
+  order: { branchId:null, date:'', noDate:false, supplierId:null, qty:{}, unit:{}, notes:{}, noteOpen:{} },
+  orders: [],
+  historyOrderId: null,
+  sendOrderId: null,
+  confirming: false,
+  successMsg: null,
+};
+
+const HE_DAYS = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
+const uid = (p) => p + '_' + Date.now() + '_' + Math.floor(Math.random()*10000);
+
+function findSupplier(id){ return state.suppliers.find(s=>s.id===id); }
+function findBranch(id){ return state.branches.find(b=>b.id===id); }
+
+function normalizePhone(phone){
+  let digits = (phone||'').replace(/\D/g,'');
+  if(digits.startsWith('0')) digits = '972' + digits.slice(1);
+  else if(!digits.startsWith('972')) digits = '972' + digits;
+  return digits;
+}
+function formatDateHe(dateStr){
+  if(!dateStr) return '';
+  const d = new Date(dateStr + 'T00:00:00');
+  const dd = String(d.getDate()).padStart(2,'0');
+  const mm = String(d.getMonth()+1).padStart(2,'0');
+  return HE_DAYS[d.getDay()] + ' (' + dd + '.' + mm + ')';
+}
+function todayStr(){
+  const d = new Date();
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function dateLabel(dateVal, noDateVal){
+  return noDateVal ? 'ללא תאריך אספקה מוגדר' : formatDateHe(dateVal);
+}
+function formatCreatedAt(iso){
+  const d = new Date(iso);
+  const dd = String(d.getDate()).padStart(2,'0');
+  const mm = String(d.getMonth()+1).padStart(2,'0');
+  const hh = String(d.getHours()).padStart(2,'0');
+  const mi = String(d.getMinutes()).padStart(2,'0');
+  return dd+'.'+mm+'.'+d.getFullYear()+' · '+hh+':'+mi;
+}
+
+function showError(msg){
+  state.errorMsg = msg;
+  render();
+  setTimeout(()=>{ if(state.errorMsg===msg){ state.errorMsg=null; render(); } }, 5000);
+}
+function showSuccess(msg){
+  state.successMsg = msg;
+  render();
+  setTimeout(()=>{ if(state.successMsg===msg){ state.successMsg=null; render(); } }, 3000);
+}
+
+function mapOrderRow(o){
+  return {
+    id: o.id,
+    branchId: o.branch_id,
+    supplierId: o.supplier_id,
+    date: o.delivery_date,
+    noDate: !!o.no_date,
+    items: o.items || [],
+    sent: !!o.sent,
+    createdAt: o.created_at,
+  };
+}
+
+async function loadAllData(){
+  state.loading = true; render();
+  try{
+    const [branchesRes, suppliersRes, productsRes, ordersRes] = await Promise.all([
+      sb.from('branches').select('*').order('name'),
+      sb.from('suppliers').select('*').order('name'),
+      sb.from('products').select('*'),
+      sb.from('orders').select('*').order('created_at', { ascending:false }),
+    ]);
+    [branchesRes, suppliersRes, productsRes, ordersRes].forEach(r => { if(r.error) throw r.error; });
+
+    state.branches = branchesRes.data;
+    state.suppliers = suppliersRes.data.map(s => ({
+      id: s.id, name: s.name, contact: s.contact, phone: s.phone,
+      products: productsRes.data
+        .filter(p => p.supplier_id === s.id)
+        .map(p => ({ id: p.id, name: p.name })),
+    }));
+    state.orders = ordersRes.data.map(mapOrderRow);
+  }catch(err){
+    state.errorMsg = 'שגיאה בטעינת הנתונים מ-Supabase: ' + (err.message || err);
+  }
+  state.loading = false;
+  render();
+}
+
+/* ---------------- Nav ---------------- */
+function goTo(screen){ state.screen = screen; render(); window.scrollTo(0,0); }
+function goHome(){
+  state.order = { branchId:null, date:'', noDate:false, supplierId:null, qty:{}, unit:{}, notes:{}, noteOpen:{} };
+  goTo('home');
+}
+function startNewOrder(){
+  state.order = { branchId:null, date:'', noDate:false, supplierId:null, qty:{}, unit:{}, notes:{}, noteOpen:{} };
+  goTo('order-branch-date');
+}
+
+/* ---------------- Order flow actions ---------------- */
+function selectBranch(id){ state.order.branchId = id; render(); }
+function setOrderDate(val){ state.order.date = val; render(); }
+function toggleNoDate(){
+  state.order.noDate = !state.order.noDate;
+  if(state.order.noDate) state.order.date = '';
+  render();
+}
+function orderStep1Ready(){ return !!state.order.branchId && (!!state.order.date || state.order.noDate); }
+function orderStep1Continue(){
+  if(!orderStep1Ready()) return;
+  // if a supplier is already set (e.g. duplicating a past order) skip straight to the checklist
+  if(state.order.supplierId) goTo('order-checklist'); else goTo('order-supplier');
+}
+function selectSupplierForOrder(id){
+  state.order.supplierId = id;
+  state.order.qty = {};
+  state.order.unit = {};
+  state.order.notes = {};
+  state.order.noteOpen = {};
+  goTo('order-checklist');
+}
+function changeQty(pid, delta){
+  const cur = state.order.qty[pid] || 0;
+  const next = Math.max(0, cur + delta);
+  if(next === 0) delete state.order.qty[pid]; else state.order.qty[pid] = next;
+  render();
+}
+function setQtyManual(pid, val){
+  const n = Math.max(0, parseInt(val||'0',10) || 0);
+  if(n === 0) delete state.order.qty[pid]; else state.order.qty[pid] = n;
+  render();
+}
+function getUnit(pid){
+  return (state.order.unit && state.order.unit[pid]) || 'יחידות';
+}
+function setUnit(pid, unit){
+  state.order.unit = state.order.unit || {};
+  state.order.unit[pid] = unit;
+  render();
+}
+function openNoteEditor(pid){
+  state.order.noteOpen = state.order.noteOpen || {};
+  state.order.noteOpen[pid] = !state.order.noteOpen[pid];
+  render();
+}
+function setNote(pid, val){
+  state.order.notes = state.order.notes || {};
+  const trimmed = val.trim();
+  if(trimmed) state.order.notes[pid] = trimmed; else delete state.order.notes[pid];
+  render();
+}
+function selectedCount(){
+  return Object.values(state.order.qty).filter(q=>q>0).length;
+}
+function goToConfirm(){ if(selectedCount()>0) goTo('order-confirm'); }
+
+function buildItemsFromCurrentOrder(){
+  const supplier = findSupplier(state.order.supplierId);
+  return supplier.products
+    .filter(p => (state.order.qty[p.id]||0) > 0)
+    .map(p => ({
+      productId: p.id,
+      name: p.name,
+      unit: getUnit(p.id),
+      qty: state.order.qty[p.id],
+      note: (state.order.notes && state.order.notes[p.id]) || null,
+    }));
+}
+function buildMessageForOrder(order){
+  const branch = findBranch(order.branchId);
+  const lines = [];
+  const head = order.noDate
+    ? 'היי, הזמנה עבור קצביית ' + (branch?branch.name:'') + ':'
+    : 'היי, הזמנה ליום ' + formatDateHe(order.date) + ' עבור קצביית ' + (branch?branch.name:'') + ':';
+  lines.push(head);
+  order.items.forEach(it=>{
+    let line = '- ' + it.qty + ' ' + it.unit + ' ' + it.name;
+    if(it.note) line += ' — *' + it.note + '*'; // WhatsApp bold syntax
+    lines.push(line);
+  });
+  return lines.join('\n');
+}
+function buildMessage(){
+  // preview of the in-progress order, before it has been saved as a record
+  return buildMessageForOrder({
+    branchId: state.order.branchId,
+    date: state.order.date,
+    noDate: state.order.noDate,
+    items: buildItemsFromCurrentOrder(),
+  });
+}
+
+async function confirmOrder(){
+  const items = buildItemsFromCurrentOrder();
+  if(items.length===0) return;
+  state.confirming = true; render();
+  try{
+    const { data, error } = await sb.from('orders').insert({
+      branch_id: state.order.branchId,
+      supplier_id: state.order.supplierId,
+      delivery_date: state.order.noDate ? null : state.order.date,
+      no_date: !!state.order.noDate,
+      items,
+      sent: false,
+    }).select().single();
+    if(error) throw error;
+    const record = mapOrderRow(data);
+    state.orders.unshift(record);
+    state.sendOrderId = record.id;
+    state.confirming = false;
+    goTo('order-send');
+  }catch(err){
+    state.confirming = false;
+    showError('שגיאה בשמירת ההזמנה: ' + err.message);
+    render();
+  }
+}
+
+function sendToContact(orderId){
+  const order = state.orders.find(o=>o.id===orderId);
+  const supplier = findSupplier(order.supplierId);
+  if(!supplier || !supplier.phone) return;
+  const phone = normalizePhone(supplier.phone);
+  const text = encodeURIComponent(buildMessageForOrder(order));
+  window.open('https://wa.me/' + phone + '?text=' + text, '_blank');
+  markOrderSent(orderId);
+}
+function sendToGroup(orderId){
+  const order = state.orders.find(o=>o.id===orderId);
+  const text = encodeURIComponent(buildMessageForOrder(order));
+  // no phone number -> WhatsApp opens its own chat/group picker
+  window.open('https://wa.me/?text=' + text, '_blank');
+  markOrderSent(orderId);
+}
+async function copyOrderText(orderId){
+  const order = state.orders.find(o=>o.id===orderId);
+  const text = buildMessageForOrder(order);
+  try{
+    await navigator.clipboard.writeText(text);
+    showSuccess('ההזמנה הועתקה');
+  }catch(err){
+    try{
+      const ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      showSuccess('ההזמנה הועתקה');
+    }catch(e2){
+      showError('ההעתקה נכשלה — אפשר לסמן את הטקסט למעלה ולהעתיק ידנית');
+    }
+  }
+  markOrderSent(orderId);
+}
+async function markOrderSent(orderId){
+  const order = state.orders.find(o=>o.id===orderId);
+  if(!order || order.sent){ render(); return; }
+  order.sent = true;
+  render();
+  try{
+    const { error } = await sb.from('orders').update({ sent:true }).eq('id', orderId);
+    if(error) throw error;
+  }catch(err){
+    showError('הפעולה בוצעה, אך עדכון הסטטוס בהיסטוריה נכשל: ' + err.message);
+  }
+}
+
+/* ---------------- Admin: suppliers ---------------- */
+function openSupplierForm(id){ state.editingSupplierId = id; goTo('admin-supplier-form'); }
+async function saveSupplierForm(){
+  const name = document.getElementById('f-sup-name').value.trim();
+  const contact = document.getElementById('f-sup-contact').value.trim();
+  const phone = document.getElementById('f-sup-phone').value.trim();
+  if(!name || !phone) return;
+  try{
+    if(state.editingSupplierId){
+      const { error } = await sb.from('suppliers').update({ name, contact, phone }).eq('id', state.editingSupplierId);
+      if(error) throw error;
+      const s = findSupplier(state.editingSupplierId);
+      s.name = name; s.contact = contact; s.phone = phone;
+    } else {
+      const { data, error } = await sb.from('suppliers').insert({ name, contact, phone }).select().single();
+      if(error) throw error;
+      state.suppliers.push({ id: data.id, name, contact, phone, products: [] });
+    }
+    state.editingSupplierId = null;
+    goTo('admin-suppliers');
+  }catch(err){ showError('שגיאה בשמירת הספק: ' + err.message); }
+}
+async function deleteSupplier(id){
+  try{
+    const { error } = await sb.from('suppliers').delete().eq('id', id);
+    if(error) throw error;
+    state.suppliers = state.suppliers.filter(s=>s.id!==id);
+    render();
+  }catch(err){ showError('שגיאה במחיקת הספק: ' + err.message); }
+}
+
+function openSupplierProducts(id){ state.editingProductSupplierId = id; goTo('admin-products'); }
+function openProductForm(supplierId, productId){
+  state.editingProductSupplierId = supplierId;
+  state.editingProductId = productId;
+  goTo('admin-product-form');
+}
+async function saveProductForm(){
+  const supplier = findSupplier(state.editingProductSupplierId);
+  const name = document.getElementById('f-prod-name').value.trim();
+  if(!name) return;
+  try{
+    if(state.editingProductId){
+      const { error } = await sb.from('products').update({ name }).eq('id', state.editingProductId);
+      if(error) throw error;
+      const p = supplier.products.find(p=>p.id===state.editingProductId);
+      p.name = name;
+    } else {
+      const { data, error } = await sb.from('products').insert({ supplier_id: supplier.id, name }).select().single();
+      if(error) throw error;
+      supplier.products.push({ id: data.id, name });
+    }
+    state.editingProductId = null;
+    goTo('admin-products');
+  }catch(err){ showError('שגיאה בשמירת המוצר: ' + err.message); }
+}
+async function deleteProduct(supplierId, productId){
+  try{
+    const { error } = await sb.from('products').delete().eq('id', productId);
+    if(error) throw error;
+    const supplier = findSupplier(supplierId);
+    supplier.products = supplier.products.filter(p=>p.id!==productId);
+    render();
+  }catch(err){ showError('שגיאה במחיקת המוצר: ' + err.message); }
+}
+
+/* ---------------- Admin: branches ---------------- */
+function openBranchForm(id){ state.editingBranchId = id; goTo('admin-branch-form'); }
+async function saveBranchForm(){
+  const name = document.getElementById('f-branch-name').value.trim();
+  if(!name) return;
+  try{
+    if(state.editingBranchId){
+      const { error } = await sb.from('branches').update({ name }).eq('id', state.editingBranchId);
+      if(error) throw error;
+      findBranch(state.editingBranchId).name = name;
+    } else {
+      const { data, error } = await sb.from('branches').insert({ name }).select().single();
+      if(error) throw error;
+      state.branches.push({ id: data.id, name });
+    }
+    state.editingBranchId = null;
+    goTo('admin-branches');
+  }catch(err){ showError('שגיאה בשמירת הסניף: ' + err.message); }
+}
+async function deleteBranch(id){
+  try{
+    const { error } = await sb.from('branches').delete().eq('id', id);
+    if(error) throw error;
+    state.branches = state.branches.filter(b=>b.id!==id);
+    render();
+  }catch(err){ showError('שגיאה במחיקת הסניף: ' + err.message); }
+}
+
+/* ---------------- Admin: import / export ---------------- */
+function setImportSupplier(id){ state.importSupplierId = id; state.importRows = null; state.importFileName = null; render(); }
+
+function handleImportFile(input){
+  const file = input.files && input.files[0];
+  if(!file) return;
+  state.importFileName = file.name;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try{
+      const wb = XLSX.read(e.target.result, { type:'array' });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet, { header:1, defval:'' });
+      if(!rows.length){ showError('הקובץ ריק'); return; }
+
+      // detect a header row (if the first cell isn't a real product name like "שם")
+      const firstCell = String(rows[0][0] || '').trim();
+      const looksLikeHeader = ['שם','שם מוצר','מוצר','product','name'].includes(firstCell.toLowerCase());
+      const dataRows = looksLikeHeader ? rows.slice(1) : rows;
+
+      const supplier = findSupplier(state.importSupplierId);
+      const existingNames = new Set(supplier.products.map(p => p.name.trim().toLowerCase()));
+      const seenInFile = new Set();
+
+      const parsed = dataRows
+        .map(r => String(r[0]||'').trim())
+        .filter(name => name)
+        .map(name => {
+          const key = name.toLowerCase();
+          const duplicate = existingNames.has(key) || seenInFile.has(key);
+          seenInFile.add(key);
+          return { name, duplicate, include: !duplicate };
+        });
+
+      if(!parsed.length){ showError('לא נמצאו שורות מוצר תקינות בקובץ'); return; }
+      state.importRows = parsed;
+      render();
+    }catch(err){
+      showError('שגיאה בקריאת הקובץ: ' + err.message);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function toggleImportRow(idx){
+  state.importRows[idx].include = !state.importRows[idx].include;
+  render();
+}
+function cancelImport(){
+  state.importRows = null; state.importFileName = null;
+  render();
+}
+async function confirmImport(){
+  const supplier = findSupplier(state.importSupplierId);
+  const rowsToImport = state.importRows.filter(r=>r.include);
+  if(!supplier || rowsToImport.length===0) return;
+  state.importing = true; render();
+  try{
+    const payload = rowsToImport.map(r => ({ supplier_id: supplier.id, name: r.name }));
+    const { data, error } = await sb.from('products').insert(payload).select();
+    if(error) throw error;
+    data.forEach(p => supplier.products.push({ id:p.id, name:p.name }));
+    state.importRows = null;
+    state.importFileName = null;
+    state.importing = false;
+    state.editingProductSupplierId = supplier.id;
+    goTo('admin-products');
+  }catch(err){
+    state.importing = false;
+    showError('שגיאה בייבוא המוצרים: ' + err.message);
+  }
+}
+
+function exportToExcel(){
+  try{
+    const wb = XLSX.utils.book_new();
+
+    const supplierRows = [['ספק','איש קשר','טלפון','מוצר']];
+    state.suppliers.forEach(s=>{
+      if(s.products.length===0){
+        supplierRows.push([s.name, s.contact||'', s.phone, '']);
+      } else {
+        s.products.forEach(p=> supplierRows.push([s.name, s.contact||'', s.phone, p.name]));
+      }
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(supplierRows), 'ספקים ומוצרים');
+
+    const branchRows = [['סניף']].concat(state.branches.map(b=>[b.name]));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(branchRows), 'סניפים');
+
+    const orderRows = [['תאריך אספקה','סניף','ספק','מוצר','יחידת מידה','כמות','הערה','נשלח בתאריך']];
+    state.orders.forEach(o=>{
+      const branch = findBranch(o.branchId);
+      const supplier = findSupplier(o.supplierId);
+      const dateCol = o.noDate ? 'ללא תאריך' : (o.date || '');
+      o.items.forEach(it=>{
+        orderRows.push([dateCol, branch?branch.name:'', supplier?supplier.name:'', it.name, it.unit, it.qty, it.note||'', formatCreatedAt(o.createdAt)]);
+      });
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(orderRows), 'היסטוריית הזמנות');
+
+    const stamp = new Date().toISOString().slice(0,10);
+    XLSX.writeFile(wb, 'נתוני-קצביה-' + stamp + '.xlsx');
+  }catch(err){
+    showError('שגיאה בייצוא לאקסל: ' + err.message);
+  }
+}
+
+/* ---------------- Order history ---------------- */
+function openHistoryDetail(id){ state.historyOrderId = id; goTo('order-history-detail'); }
+async function deleteHistoryOrder(id){
+  try{
+    const { error } = await sb.from('orders').delete().eq('id', id);
+    if(error) throw error;
+    state.orders = state.orders.filter(o=>o.id!==id);
+    goTo('order-history');
+  }catch(err){ showError('שגיאה במחיקת ההזמנה: ' + err.message); }
+}
+function duplicateOrder(id){
+  const order = state.orders.find(o=>o.id===id);
+  if(!order) return;
+  const supplier = findSupplier(order.supplierId);
+  const qty = {}, unit = {}, notes = {};
+  order.items.forEach(it=>{
+    // only bring over items whose product still exists for this supplier
+    if(supplier && supplier.products.some(p=>p.id===it.productId)){
+      qty[it.productId] = it.qty;
+      unit[it.productId] = it.unit || 'יחידות';
+      if(it.note) notes[it.productId] = it.note;
+    }
+  });
+  state.order = {
+    branchId: order.branchId,
+    date: '',
+    noDate: false,
+    supplierId: supplier ? order.supplierId : null,
+    qty, unit, notes, noteOpen: {},
+  };
+  goTo('order-branch-date');
+}
+
+/* ---------------- Icons ---------------- */
+const ICON_CLEAVER = `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M8 30 L30 8 L40 18 L18 40 Z" fill="var(--accent)"/>
+  <rect x="6" y="30" width="10" height="10" rx="2" transform="rotate(-45 11 35)" fill="var(--ink)"/>
+</svg>`;
+
+/* ---------------- Renderers ---------------- */
+function topbar(title, sub, onBack){
+  return `<div class="topbar">
+    ${onBack ? `<div class="back" onclick="${onBack}">›</div>` : `<div style="width:38px"></div>`}
+    <div>
+      <h1>${title}</h1>
+      ${sub ? `<div class="sub">${sub}</div>` : ''}
+    </div>
+  </div>`;
+}
+
+function renderScreen(){
+  if(!state.unlocked) return screenLock();
+  if(!state.configured) return screenSetupNeeded();
+  if(state.loading) return screenLoading();
+  switch(state.screen){
+    case 'home': return screenHome();
+    case 'admin-suppliers': return screenAdminSuppliers();
+    case 'admin-supplier-form': return screenSupplierForm();
+    case 'admin-products': return screenAdminProducts();
+    case 'admin-product-form': return screenProductForm();
+    case 'admin-branches': return screenAdminBranches();
+    case 'admin-branch-form': return screenBranchForm();
+    case 'admin-io': return screenAdminIO();
+    case 'order-branch-date': return screenOrderBranchDate();
+    case 'order-supplier': return screenOrderSupplier();
+    case 'order-checklist': return screenOrderChecklist();
+    case 'order-confirm': return screenOrderConfirm();
+    case 'order-send': return screenOrderSend();
+    case 'order-history': return screenOrderHistory();
+    case 'order-history-detail': return screenOrderHistoryDetail();
+    default: return screenHome();
+  }
+}
+
+function screenLock(){
+  return `<div class="content" style="display:flex;flex-direction:column;justify-content:center;min-height:92vh;gap:14px;text-align:center;">
+    <div style="width:44px;height:44px;margin:0 auto;">${ICON_CLEAVER}</div>
+    <div style="font-weight:800;font-size:19px;font-family:'Rubik'">קצביית הרשת</div>
+    <div style="color:var(--ink-soft);font-size:14px;margin-bottom:6px">הזן קוד גישה כדי להמשיך</div>
+    <input id="f-passcode" type="password" placeholder="קוד גישה" autocomplete="off"
+      style="text-align:center;font-size:18px;padding:14px;border-radius:12px;border:1.5px solid var(--border);font-family:'Heebo'"
+      onkeydown="if(event.key==='Enter') checkPasscode()">
+    <button class="btn btn-primary btn-block" onclick="checkPasscode()">כניסה</button>
+    ${state.passcodeError ? `<div style="color:var(--accent);font-size:13px;font-weight:600">קוד שגוי, נסה שוב</div>` : ''}
+  </div>`;
+}
+function checkPasscode(){
+  const val = document.getElementById('f-passcode').value;
+  if(val === APP_PASSCODE){ state.unlocked = true; state.passcodeError = false; if(state.configured) loadAllData(); else render(); }
+  else { state.passcodeError = true; render(); }
+}
+
+function screenLoading(){
+  return `<div class="content" style="display:flex;align-items:center;justify-content:center;min-height:70vh;flex-direction:column;gap:14px;">
+    <div style="font-size:34px">🥩</div>
+    <div style="color:var(--ink-soft);font-weight:600">טוען נתונים מ-Supabase…</div>
+  </div>`;
+}
+
+function screenSetupNeeded(){
+  return `<div class="content" style="padding-top:36px">
+    <div style="text-align:center;margin-bottom:18px;">
+      <div style="font-size:38px;margin-bottom:8px">🔧</div>
+      <div style="font-weight:800;font-size:18px;font-family:'Rubik'">חסר חיבור ל-Supabase</div>
+    </div>
+    <div class="card" style="font-size:14px;line-height:1.9">
+      כדי שהנתונים באמת יישמרו, יש למלא בראש קובץ ה-HTML (בתוך תג <span class="mono">&lt;script&gt;</span>) את שני הפרטים הבאים:
+      <ul style="padding-inline-start:20px;margin:12px 0">
+        <li><b>SUPABASE_URL</b> — כתובת הפרויקט שלך</li>
+        <li><b>SUPABASE_ANON_KEY</b> — המפתח הציבורי (anon public)</li>
+      </ul>
+      את שניהם מוצאים ב-Supabase תחת <b>Project Settings → API</b>.<br>
+      לפני כן יש להריץ פעם אחת את קובץ <b>supabase-schema.sql</b> המצורף, דרך ה-SQL Editor בפרויקט, כדי ליצור את הטבלאות.
+    </div>
+  </div>`;
+}
+
+function screenHome(){
+  return `
+  <div class="brand">
+    ${ICON_CLEAVER}
+    <div>
+      <div class="name">קצביית הרשת</div>
+      <div class="tag">ניהול הזמנות סחורה וציוד</div>
+    </div>
+  </div>
+  <div class="content no-pad-bottom">
+    <div class="tile order" onclick="startNewOrder()">
+      <div class="icon">📋</div>
+      <div>
+        <div class="t">הזמנה חדשה</div>
+        <div class="d">בחירת סניף, ספק וכמויות</div>
+      </div>
+      <div class="arrow">‹</div>
+    </div>
+    <div class="tile history" onclick="goTo('order-history')">
+      <div class="icon">🕒</div>
+      <div>
+        <div class="t">היסטוריית הזמנות</div>
+        <div class="d">${state.orders.length} הזמנות שנשלחו · שכפול מהיר</div>
+      </div>
+      <div class="arrow">‹</div>
+    </div>
+    <div class="tile admin" onclick="goTo('admin-suppliers')">
+      <div class="icon">⚙️</div>
+      <div>
+        <div class="t">ניהול</div>
+        <div class="d">ספקים, מוצרים וסניפים</div>
+      </div>
+      <div class="arrow">‹</div>
+    </div>
+  </div>`;
+}
+
+/* --- Admin: Suppliers list --- */
+function screenAdminSuppliers(){
+  const rows = state.suppliers.map(s => `
+    <div class="list-item">
+      <div class="info" style="cursor:pointer" onclick="openSupplierProducts('${s.id}')">
+        <div class="name">${s.name}</div>
+        <div class="meta">${s.contact ? s.contact + ' · ' : ''}${s.phone} · ${s.products.length} מוצרים</div>
+      </div>
+      <div class="acts">
+        <div class="icon-btn" onclick="openSupplierForm('${s.id}')">✎</div>
+        <div class="icon-btn danger" onclick="deleteSupplier('${s.id}')">🗑</div>
+      </div>
+    </div>`).join('');
+
+  return `
+  ${topbar('ניהול', null, "goHome()")}
+  <div class="content">
+    ${adminTabs()}
+    <div class="card">
+      ${rows || `<div class="empty"><div class="e-icon">🏷️</div><div class="e-title">אין עדיין ספקים</div><div class="e-sub">הוסף ספק ראשון כדי להתחיל</div></div>`}
+    </div>
+    <button class="fab-add" onclick="openSupplierForm(null)">+ הוסף ספק</button>
+  </div>`;
+}
+
+function screenSupplierForm(){
+  const editing = state.editingSupplierId ? findSupplier(state.editingSupplierId) : null;
+  return `
+  ${topbar(editing ? 'עריכת ספק' : 'ספק חדש', null, "goTo('admin-suppliers')")}
+  <div class="content">
+    <div class="field">
+      <label>שם הספק</label>
+      <input id="f-sup-name" type="text" placeholder="לדוגמה: ספק אריזות" value="${editing ? editing.name : ''}">
+    </div>
+    <div class="field">
+      <label>איש קשר</label>
+      <input id="f-sup-contact" type="text" placeholder="שם איש הקשר" value="${editing ? editing.contact : ''}">
+    </div>
+    <div class="field">
+      <label>טלפון (וואטסאפ)</label>
+      <input id="f-sup-phone" type="tel" placeholder="050-1234567" value="${editing ? editing.phone : ''}">
+    </div>
+    <button class="btn btn-primary btn-block" onclick="saveSupplierForm()">שמירה</button>
+  </div>`;
+}
+
+/* --- Admin: Products of a supplier --- */
+function screenAdminProducts(){
+  const supplier = findSupplier(state.editingProductSupplierId);
+  const rows = supplier.products.map(p => `
+    <div class="list-item">
+      <div class="info">
+        <div class="name">${p.name}</div>
+      </div>
+      <div class="acts">
+        <div class="icon-btn" onclick="openProductForm('${supplier.id}','${p.id}')">✎</div>
+        <div class="icon-btn danger" onclick="deleteProduct('${supplier.id}','${p.id}')">🗑</div>
+      </div>
+    </div>`).join('');
+
+  return `
+  ${topbar(supplier.name, 'ניהול מוצרים', "goTo('admin-suppliers')")}
+  <div class="content">
+    <div class="card">
+      ${rows || `<div class="empty"><div class="e-icon">📦</div><div class="e-title">אין מוצרים לספק זה</div><div class="e-sub">הוסף מוצר ראשון</div></div>`}
+    </div>
+    <button class="fab-add" onclick="openProductForm('${supplier.id}', null)">+ הוסף מוצר</button>
+  </div>`;
+}
+
+function screenProductForm(){
+  const supplier = findSupplier(state.editingProductSupplierId);
+  const editing = state.editingProductId ? supplier.products.find(p=>p.id===state.editingProductId) : null;
+  return `
+  ${topbar(editing ? 'עריכת מוצר' : 'מוצר חדש', supplier.name, "openSupplierProducts('"+supplier.id+"')")}
+  <div class="content">
+    <div class="field">
+      <label>שם המוצר</label>
+      <input id="f-prod-name" type="text" placeholder="לדוגמה: גליל נייר" value="${editing ? editing.name : ''}">
+    </div>
+    <div style="font-size:12.5px;color:var(--ink-soft);margin-bottom:14px">את יחידת המידה (יחידות / ארגז / קרטון) בוחרים בזמן ההזמנה, לכל מוצר בנפרד.</div>
+    <button class="btn btn-primary btn-block" onclick="saveProductForm()">שמירה</button>
+  </div>`;
+}
+
+/* --- Admin: Branches --- */
+function screenAdminBranches(){
+  const rows = state.branches.map(b => `
+    <div class="list-item">
+      <div class="info"><div class="name">${b.name}</div></div>
+      <div class="acts">
+        <div class="icon-btn" onclick="openBranchForm('${b.id}')">✎</div>
+        <div class="icon-btn danger" onclick="deleteBranch('${b.id}')">🗑</div>
+      </div>
+    </div>`).join('');
+  return `
+  ${topbar('ניהול', null, "goHome()")}
+  <div class="content">
+    ${adminTabs()}
+    <div class="card">
+      ${rows || `<div class="empty"><div class="e-icon">🏬</div><div class="e-title">אין עדיין סניפים</div></div>`}
+    </div>
+    <button class="fab-add" onclick="openBranchForm(null)">+ הוסף סניף</button>
+  </div>`;
+}
+function screenBranchForm(){
+  const editing = state.editingBranchId ? findBranch(state.editingBranchId) : null;
+  return `
+  ${topbar(editing ? 'עריכת סניף' : 'סניף חדש', null, "goTo('admin-branches')")}
+  <div class="content">
+    <div class="field">
+      <label>שם הסניף</label>
+      <input id="f-branch-name" type="text" placeholder="לדוגמה: שינקין" value="${editing ? editing.name : ''}">
+    </div>
+    <button class="btn btn-primary btn-block" onclick="saveBranchForm()">שמירה</button>
+  </div>`;
+}
+
+function screenAdminIO(){
+  const supplierOptions = state.suppliers.map(s =>
+    `<div class="row-select ${state.importSupplierId===s.id?'active':''}" onclick="setImportSupplier('${s.id}')">
+      <div>
+        <div class="main">${s.name}</div>
+        <div class="meta">${s.products.length} מוצרים קיימים</div>
+      </div>
+      <div class="check">${state.importSupplierId===s.id?'✓':''}</div>
+    </div>`).join('');
+
+  let importSection = '';
+  if(state.suppliers.length===0){
+    importSection = `<div class="empty"><div class="e-icon">🏷️</div><div class="e-title">קודם צריך ליצור לפחות ספק אחד</div></div>`;
+  } else {
+    importSection = `
+      <div class="field"><label>לאיזה ספק מייבאים מוצרים?</label></div>
+      ${supplierOptions}
+    `;
+    if(state.importSupplierId){
+      importSection += `
+      <div class="field" style="margin-top:14px">
+        <label>קובץ Excel / CSV (עמודה אחת: שם מוצר)</label>
+        <input type="file" accept=".xlsx,.xls,.csv" onchange="handleImportFile(this)">
+      </div>`;
+    }
+    if(state.importRows){
+      const rowsHtml = state.importRows.map((r,idx) => `
+        <div class="list-item" style="cursor:pointer" onclick="toggleImportRow(${idx})">
+          <div class="info">
+            <div class="name" style="${r.include?'':'text-decoration:line-through;color:var(--ink-soft)'}">${r.name}</div>
+            ${r.duplicate ? `<div class="meta" style="color:var(--wood)">⚠️ כבר קיים ברשימה — לא ייובא כברירת מחדל</div>` : ''}
+          </div>
+          <div class="check" style="border:2px solid var(--border);width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex:none;${r.include?'background:var(--success);border-color:var(--success);color:#fff':''}">${r.include?'✓':''}</div>
+        </div>`).join('');
+      const includedCount = state.importRows.filter(r=>r.include).length;
+      const duplicateCount = state.importRows.filter(r=>r.duplicate).length;
+      importSection += `
+      <div class="card" style="margin-top:14px">
+        <div style="font-weight:700;margin-bottom:6px">תצוגה מקדימה — ${state.importFileName}</div>
+        <div style="font-size:12px;color:var(--ink-soft);margin-bottom:10px">
+          לחיצה על שורה מסמנת/מבטלת ייבוא שלה
+          ${duplicateCount>0 ? ` · נמצאו ${duplicateCount} מוצרים שכבר קיימים, סומנו אוטומטית לדילוג` : ''}
+        </div>
+        ${rowsHtml}
+      </div>
+      <div style="display:flex;gap:10px;margin-top:10px">
+        <button class="btn btn-secondary" style="flex:1" onclick="cancelImport()">ביטול</button>
+        <button class="btn btn-primary" style="flex:1.4" ${includedCount===0||state.importing?'disabled':''} onclick="confirmImport()">
+          ${state.importing ? 'מייבא…' : 'ייבוא ' + includedCount + ' מוצרים'}
+        </button>
+      </div>`;
+    }
+  }
+
+  return `
+  ${topbar('ניהול', null, "goHome()")}
+  <div class="content">
+    ${adminTabs()}
+    <div class="card">
+      <div style="font-weight:800;font-family:'Rubik';margin-bottom:12px">ייבוא מוצרים מאקסל</div>
+      ${importSection}
+    </div>
+    <div class="card">
+      <div style="font-weight:800;font-family:'Rubik';margin-bottom:6px">ייצוא נתונים</div>
+      <div style="font-size:13px;color:var(--ink-soft);margin-bottom:12px">מוריד קובץ Excel אחד עם כל הספקים, המוצרים, הסניפים וההיסטוריה</div>
+      <button class="btn btn-secondary btn-block" onclick="exportToExcel()">📥 ייצוא לאקסל</button>
+    </div>
+  </div>`;
+}
+function adminTabs(){
+  return `<div class="tabs">
+    <div class="tab ${state.adminTab==='suppliers'?'active':''}" onclick="state.adminTab='suppliers';goTo('admin-suppliers')">ספקים</div>
+    <div class="tab ${state.adminTab==='branches'?'active':''}" onclick="state.adminTab='branches';goTo('admin-branches')">סניפים</div>
+    <div class="tab ${state.adminTab==='io'?'active':''}" onclick="state.adminTab='io';goTo('admin-io')">ייבוא / ייצוא</div>
+  </div>`;
+}
+
+/* --- Order flow --- */
+function stepIndicator(active){
+  let html = '<div class="steps">';
+  for(let i=4;i>=1;i--){
+    html += `<div class="step ${i<active?'done':(i===active?'active':'')}"></div>`;
+  }
+  html += '</div>';
+  return html;
+}
+
+function screenOrderBranchDate(){
+  const branches = state.branches.map(b => `
+    <div class="row-select ${state.order.branchId===b.id?'active':''}" onclick="selectBranch('${b.id}')">
+      <div class="main">${b.name}</div>
+      <div class="check">${state.order.branchId===b.id?'✓':''}</div>
+    </div>`).join('');
+  const canContinue = orderStep1Ready();
+  const nextLabel = state.order.supplierId ? 'המשך לבחירת פריטים' : 'המשך לבחירת ספק';
+  return `
+  ${topbar('הזמנה חדשה', 'שלב 1 מתוך 4 · סניף ותאריך', "goHome()")}
+  ${stepIndicator(1)}
+  <div class="content">
+    <div class="field"><label>בחר סניף</label></div>
+    ${branches}
+    <div class="field" style="margin-top:18px">
+      <label>תאריך אספקה מבוקש</label>
+      <input type="date" id="f-order-date" value="${state.order.date}" min="${todayStr()}"
+        onchange="setOrderDate(this.value)" ${state.order.noDate ? 'disabled' : ''}>
+    </div>
+    <div class="row-select ${state.order.noDate?'active':''}" style="margin-top:6px" onclick="toggleNoDate()">
+      <div>
+        <div class="main">הזמנה ללא תאריך אספקה ספציפי</div>
+        <div class="meta">להזמנה כללית שלא תלויה ביום קבוע</div>
+      </div>
+      <div class="check">${state.order.noDate?'✓':''}</div>
+    </div>
+  </div>
+  <div class="footer-bar">
+    <button class="btn btn-primary btn-block" ${canContinue?'':'disabled'} onclick="orderStep1Continue()">${nextLabel}</button>
+  </div>`;
+}
+
+function screenOrderSupplier(){
+  const branch = findBranch(state.order.branchId);
+  const rows = state.suppliers.map(s => `
+    <div class="row-select ${state.order.supplierId===s.id?'active':''}" onclick="selectSupplierForOrder('${s.id}')">
+      <div>
+        <div class="main">${s.name}</div>
+        <div class="meta">${s.products.length} מוצרים</div>
+      </div>
+      <div class="check">${state.order.supplierId===s.id?'✓':''}</div>
+    </div>`).join('');
+  return `
+  ${topbar('בחירת ספק', branch.name + ' · ' + dateLabel(state.order.date, state.order.noDate), "goTo('order-branch-date')")}
+  ${stepIndicator(2)}
+  <div class="content">
+    ${rows}
+  </div>`;
+}
+
+function screenOrderChecklist(){
+  const branch = findBranch(state.order.branchId);
+  const supplier = findSupplier(state.order.supplierId);
+  const UNITS = ['יחידות','ארגז','קרטון'];
+  const rows = supplier.products.map(p => {
+    const q = state.order.qty[p.id] || 0;
+    const unit = getUnit(p.id);
+    const note = (state.order.notes && state.order.notes[p.id]) || '';
+    const noteOpen = !!(state.order.noteOpen && state.order.noteOpen[p.id]) || !!note;
+    const unitButtons = UNITS.map(u => `<button class="unit-btn ${unit===u?'active':''}" onclick="setUnit('${p.id}','${u}')">${u}</button>`).join('');
+    let noteHtml = '';
+    if(noteOpen){
+      noteHtml = `<input class="note-input" type="text" placeholder="הערה על המוצר... (תופיע מודגשת בהודעה)" value="${note}" onchange="setNote('${p.id}', this.value)">`;
+    }
+    return `
+    <div class="item-row ${q>0?'qty-active':''}">
+      <div class="item-top">
+        <div class="name">${p.name}</div>
+        <div class="note-toggle ${note?'has-note':''}" onclick="openNoteEditor('${p.id}')">📝</div>
+      </div>
+      ${noteHtml}
+      <div class="item-bottom">
+        <div class="unit-toggle">${unitButtons}</div>
+        <div class="stepper">
+          <button onclick="changeQty('${p.id}',-1)">−</button>
+          <input class="qty mono" type="text" inputmode="numeric" value="${q}" onchange="setQtyManual('${p.id}', this.value)">
+          <button onclick="changeQty('${p.id}',1)">+</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+  const count = selectedCount();
+  return `
+  ${topbar(supplier.name, branch.name + ' · ' + dateLabel(state.order.date, state.order.noDate), "goTo('order-supplier')")}
+  ${stepIndicator(3)}
+  <div class="content">
+    ${rows || `<div class="empty"><div class="e-icon">📦</div><div class="e-title">לספק זה אין מוצרים מוגדרים</div></div>`}
+  </div>
+  <div class="footer-bar">
+    <div class="count">נבחרו <b>${count}</b> פריטים</div>
+    <button class="btn btn-primary btn-block" ${count===0?'disabled':''} onclick="goToConfirm()">לאישור ההזמנה</button>
+  </div>`;
+}
+
+function renderTicketLines(items){
+  return items.map(it =>
+    `<div class="t-item"><div class="t-line"><span class="pname">${it.name}</span><span class="pqty">${it.qty} ${it.unit}</span></div>`
+    + (it.note ? `<div class="t-note">📌 <b>${it.note}</b></div>` : '') + `</div>`
+  ).join('');
+}
+
+function screenOrderConfirm(){
+  const branch = findBranch(state.order.branchId);
+  const supplier = findSupplier(state.order.supplierId);
+  const items = buildItemsFromCurrentOrder();
+  const lines = renderTicketLines(items);
+  return `
+  ${topbar('אישור הזמנה', 'שלב אחרון לפני השמירה', "goTo('order-checklist')")}
+  ${stepIndicator(4)}
+  <div class="content">
+    <div class="ticket-wrap">
+      <div class="ticket">
+        <div class="stamp">מוכן לאישור</div>
+        <div class="t-head">${state.order.noDate
+            ? 'היי, הזמנה עבור קצביית <b>'+branch.name+'</b>, מול <b>'+supplier.name+'</b>:'
+            : 'היי, הזמנה ליום <b>'+formatDateHe(state.order.date)+'</b><br>עבור קצביית <b>'+branch.name+'</b>, מול <b>'+supplier.name+'</b>:'}</div>
+        ${lines}
+        <div class="t-foot">לאחר האישור תוכל לבחור איך ומתי לשלוח את ההזמנה לספק</div>
+      </div>
+    </div>
+  </div>
+  <div class="footer-bar" style="gap:10px;">
+    <button class="btn btn-secondary" style="flex:1" onclick="goTo('order-checklist')">חזרה לעריכה</button>
+    <button class="btn btn-primary" style="flex:1.4" ${state.confirming?'disabled':''} onclick="confirmOrder()">${state.confirming ? 'שומר…' : 'אישור ההזמנה'}</button>
+  </div>`;
+}
+
+function screenOrderSend(){
+  const order = state.orders.find(o=>o.id===state.sendOrderId);
+  if(!order){
+    return `${topbar('שליחת הזמנה', null, "goHome()")}
+    <div class="content"><div class="empty"><div class="e-icon">📦</div><div class="e-title">ההזמנה לא נמצאה</div></div></div>`;
+  }
+  const branch = findBranch(order.branchId);
+  const supplier = findSupplier(order.supplierId);
+  const lines = renderTicketLines(order.items);
+  const hasPhone = supplier && supplier.phone;
+  return `
+  ${topbar('שליחת הזמנה', 'ההזמנה נשמרה — עכשיו בוחרים איך לשלוח', "goHome()")}
+  <div class="content">
+    <div class="ticket-wrap">
+      <div class="ticket">
+        <div class="stamp">מאושר</div>
+        <div class="t-head">${order.noDate
+            ? 'היי, הזמנה עבור קצביית <b>'+(branch?branch.name:'—')+'</b>, מול <b>'+(supplier?supplier.name:'—')+'</b>:'
+            : 'היי, הזמנה ליום <b>'+formatDateHe(order.date)+'</b><br>עבור קצביית <b>'+(branch?branch.name:'—')+'</b>, מול <b>'+(supplier?supplier.name:'—')+'</b>:'}</div>
+        ${lines}
+      </div>
+    </div>
+
+    ${order.sent ? `<div class="card" style="text-align:center;color:var(--success);font-weight:700;margin-top:14px">✓ ההזמנה סומנה כנשלחה</div>` : ''}
+
+    <div style="display:flex;flex-direction:column;gap:10px;margin-top:14px">
+      ${hasPhone
+        ? `<button class="btn wa-btn btn-block" onclick="sendToContact('${order.id}')">📱 שליחה ל${supplier.name} (${supplier.phone})</button>`
+        : `<div class="empty" style="padding:10px"><div class="e-sub">לא הוגדר מספר טלפון לספק זה</div></div>`}
+      <button class="btn btn-secondary btn-block" onclick="sendToGroup('${order.id}')">👥 שליחה לקבוצה בוואטסאפ</button>
+      <button class="btn btn-secondary btn-block" onclick="copyOrderText('${order.id}')">📋 העתקת ההזמנה</button>
+    </div>
+  </div>
+  <div class="footer-bar" style="gap:10px;">
+    <button class="btn btn-secondary" style="flex:1" onclick="goTo('order-history')">להיסטוריה</button>
+    <button class="btn btn-primary" style="flex:1" onclick="goHome()">סיום, לבית</button>
+  </div>`;
+}
+
+function screenOrderHistory(){
+  const rows = state.orders.map(o => {
+    const branch = findBranch(o.branchId);
+    const supplier = findSupplier(o.supplierId);
+    const statusBadge = o.sent
+      ? `<span style="color:var(--success)">✓ נשלח</span>`
+      : `<span style="color:var(--wood)">● ממתין לשליחה</span>`;
+    return `
+    <div class="list-item">
+      <div class="info" style="cursor:pointer" onclick="openHistoryDetail('${o.id}')">
+        <div class="name">${branch ? branch.name : '—'} · ${supplier ? supplier.name : '—'}</div>
+        <div class="meta">${dateLabel(o.date, o.noDate)} · ${o.items.length} פריטים · ${statusBadge} · ${formatCreatedAt(o.createdAt)}</div>
+      </div>
+      <div class="acts">
+        <div class="icon-btn" title="שליחה" onclick="state.sendOrderId='${o.id}'; goTo('order-send')">📤</div>
+        <div class="icon-btn" title="שכפול" onclick="duplicateOrder('${o.id}')">⤴</div>
+      </div>
+    </div>`;
+  }).join('');
+  return `
+  ${topbar('היסטוריית הזמנות', state.orders.length + ' הזמנות שאושרו', "goHome()")}
+  <div class="content">
+    <div class="card">
+      ${rows || `<div class="empty"><div class="e-icon">🕒</div><div class="e-title">עדיין לא אושרו הזמנות</div><div class="e-sub">הזמנות שתאשר יופיעו כאן</div></div>`}
+    </div>
+  </div>`;
+}
+
+function screenOrderHistoryDetail(){
+  const order = state.orders.find(o=>o.id===state.historyOrderId);
+  if(!order){
+    return `${topbar('פרטי הזמנה', null, "goTo('order-history')")}
+    <div class="content"><div class="empty"><div class="e-icon">🕒</div><div class="e-title">ההזמנה לא נמצאה</div></div></div>`;
+  }
+  const branch = findBranch(order.branchId);
+  const supplier = findSupplier(order.supplierId);
+  const lines = renderTicketLines(order.items);
+  const head = order.noDate
+    ? 'היי, הזמנה עבור קצביית <b>'+(branch?branch.name:'—')+'</b>, מול <b>'+(supplier?supplier.name:'—')+'</b>:'
+    : 'היי, הזמנה ליום <b>'+formatDateHe(order.date)+'</b><br>עבור קצביית <b>'+(branch?branch.name:'—')+'</b>, מול <b>'+(supplier?supplier.name:'—')+'</b>:';
+  return `
+  ${topbar('פרטי הזמנה', formatCreatedAt(order.createdAt), "goTo('order-history')")}
+  <div class="content">
+    <div class="ticket-wrap">
+      <div class="ticket">
+        <div class="stamp">${order.sent ? 'נשלח' : 'מאושר'}</div>
+        <div class="t-head">${head}</div>
+        ${lines}
+      </div>
+    </div>
+    <button class="btn wa-btn btn-block" style="margin-top:16px" onclick="state.sendOrderId='${order.id}'; goTo('order-send')">📤 שליחת ההזמנה</button>
+    <div style="display:flex;gap:10px;margin-top:10px">
+      <button class="btn btn-secondary" style="flex:1" onclick="deleteHistoryOrder('${order.id}')">מחיקה</button>
+      <button class="btn btn-secondary" style="flex:1" onclick="duplicateOrder('${order.id}')">שכפול הזמנה</button>
+    </div>
+  </div>`;
+}
+
+/* ---------------- Boot ---------------- */
+function render(){
+  const banner = (state.errorMsg ? `<div class="err-banner">${state.errorMsg}</div>` : '')
+    + (state.successMsg ? `<div class="ok-banner">${state.successMsg}</div>` : '');
+  document.getElementById('app').innerHTML = banner + renderScreen();
+}
+if(state.configured){ state.loading = false; } // actual load is kicked off from checkPasscode() once unlocked
+render();
+</script>
+</body>
+</html>
