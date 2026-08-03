@@ -745,6 +745,7 @@ function openSupplierProducts(id){
   state.expandedReorderId = null;
   state.bulkMode = false;
   state.bulkSelected = {};
+  collapseAllCategories(findSupplier(id));
   goTo('admin-products');
 }
 function openProductForm(supplierId, productId){
@@ -957,6 +958,11 @@ function moveCategory(supplierId, categoryId, direction){
   persistCategoryOrder(supplier);
 }
 function categoryKey(supplierId, categoryId){ return supplierId + ':' + (categoryId || 'none'); }
+function collapseAllCategories(supplier){
+  state.collapsedCategories = state.collapsedCategories || {};
+  supplier.categories.forEach(c => { state.collapsedCategories[categoryKey(supplier.id, c.id)] = true; });
+  state.collapsedCategories[categoryKey(supplier.id, null)] = true;
+}
 function toggleCategoryCollapse(key){
   state.collapsedCategories = state.collapsedCategories || {};
   state.collapsedCategories[key] = !state.collapsedCategories[key];
