@@ -422,6 +422,9 @@ let state = {
   collapsedCategories: {},
   bulkMode: false,
   bulkSelected: {},
+  productViewMode: 'brand',
+  checklistViewMode: 'brand',
+  newCategoryKind: null,
 
   order: { branchId:null, date:'', noDate:false, supplierId:null, qty:{}, unit:{}, notes:{}, noteOpen:{} },
   orders: [],
@@ -508,11 +511,11 @@ async function loadAllData(){
       id: s.id, name: s.name, contact: s.contact, phone: s.phone,
       categories: categoriesRes.data
         .filter(c => c.supplier_id === s.id)
-        .map(c => ({ id: c.id, name: c.name, sortOrder: c.sort_order }))
+        .map(c => ({ id: c.id, name: c.name, kind: c.kind || 'brand', sortOrder: c.sort_order }))
         .sort((a,b) => (a.sortOrder ?? 999999) - (b.sortOrder ?? 999999)),
       products: productsRes.data
         .filter(p => p.supplier_id === s.id)
-        .map(p => ({ id: p.id, name: p.name, sortOrder: p.sort_order, categoryId: p.category_id }))
+        .map(p => ({ id: p.id, name: p.name, sortOrder: p.sort_order, categoryId: p.category_id, typeId: p.type_id }))
         .sort((a,b) => (a.sortOrder ?? 999999) - (b.sortOrder ?? 999999)),
     }));
     state.orders = ordersRes.data.map(mapOrderRow);
@@ -555,6 +558,8 @@ function selectSupplierForOrder(id){
   state.order.notes = {};
   state.order.noteOpen = {};
   state.checklistSearch = '';
+  state.checklistViewMode = 'brand';
+  collapseAllCategories(findSupplier(id));
   goTo('order-checklist');
 }
 function changeQty(pid, delta){
@@ -745,6 +750,7 @@ function openSupplierProducts(id){
   state.expandedReorderId = null;
   state.bulkMode = false;
   state.bulkSelected = {};
+  state.productViewMode = 'brand';
   collapseAllCategories(findSupplier(id));
   goTo('admin-products');
 }
@@ -764,18 +770,19 @@ async function saveProductForm(){
   const supplier = findSupplier(state.editingProductSupplierId);
   const name = document.getElementById('f-prod-name').value.trim();
   const categoryId = document.getElementById('f-prod-category').value || null;
+  const typeId = document.getElementById('f-prod-type').value || null;
   if(!name) return;
   try{
     if(state.editingProductId){
-      const { error } = await sb.from('products').update({ name, category_id: categoryId }).eq('id', state.editingProductId);
+      const { error } = await sb.from('products').update({ name, category_id: categoryId, type_id: typeId }).eq('id', state.editingProductId);
       if(error) throw error;
       const p = supplier.products.find(p=>p.id===state.editingProductId);
-      p.name = name; p.categoryId = categoryId;
+      p.name = name; p.categoryId = categoryId; p.typeId = typeId;
     } else {
       const sortOrder = nextSortOrder(supplier, categoryId);
-      const { data, error } = await sb.from('products').insert({ supplier_id: supplier.id, name, category_id: categoryId, sort_order: sortOrder }).select().single();
+      const { data, error } = await sb.from('products').insert({ supplier_id: supplier.id, name, category_id: categoryId, type_id: typeId, sort_order: sortOrder }).select().single();
       if(error) throw error;
-      supplier.products.push({ id: data.id, name, sortOrder, categoryId });
+      supplier.products.push({ id: data.id, name, sortOrder, categoryId, typeId });
     }
     state.editingProductId = null;
     goTo('admin-products');
@@ -783,7 +790,7 @@ async function saveProductForm(){
 }
 async function persistProductOrder(products, supplierId){
   try{
-    const rows = products.map(p => ({ id:p.id, supplier_id:supplierId, name:p.name, category_id:p.categoryId||null, sort_order:p.sortOrder }));
+    const rows = products.map(p => ({ id:p.id, supplier_id:supplierId, name:p.name, category_id:p.categoryId||null, type_id:p.typeId||null, sort_order:p.sortOrder }));
     const { error } = await sb.from('products').upsert(rows);
     if(error) throw error;
   }catch(err){
@@ -869,19 +876,29 @@ function bulkMoveSelected(supplierId){
   const supplier = findSupplier(supplierId);
   const select = document.getElementById('f-bulk-category');
   if(!select) return;
-  const categoryId = select.value || null;
+  const targetId = select.value || null;
+  const dimension = DIMENSIONS[state.productViewMode] || DIMENSIONS.brand;
   const ids = Object.keys(state.bulkSelected||{}).filter(id => state.bulkSelected[id]);
   if(ids.length===0) return;
 
-  let nextOrder = nextSortOrder(supplier, categoryId);
   const touched = [];
-  ids.forEach(id=>{
-    const p = supplier.products.find(x=>x.id===id);
-    if(!p) return;
-    p.categoryId = categoryId;
-    p.sortOrder = nextOrder++;
-    touched.push(p);
-  });
+  if(dimension.field === 'categoryId'){
+    let nextOrder = nextSortOrder(supplier, targetId);
+    ids.forEach(id=>{
+      const p = supplier.products.find(x=>x.id===id);
+      if(!p) return;
+      p.categoryId = targetId;
+      p.sortOrder = nextOrder++;
+      touched.push(p);
+    });
+  } else {
+    ids.forEach(id=>{
+      const p = supplier.products.find(x=>x.id===id);
+      if(!p) return;
+      p.typeId = targetId;
+      touched.push(p);
+    });
+  }
   state.bulkSelected = {};
   persistProductOrder(touched, supplierId);
   showSuccess(touched.length + ' מוצרים הועברו');
@@ -900,13 +917,25 @@ async function deleteProduct(supplierId, productId){
   }catch(err){ showError('שגיאה במחיקת המוצר: ' + err.message); }
 }
 
-/* ---------------- Admin: categories ---------------- */
-function nextCategorySortOrder(supplier){
-  return supplier.categories.length ? Math.max(...supplier.categories.map(c=>c.sortOrder||0)) + 1 : 1;
+/* ---------------- Admin: categories (brand + type dimensions) ---------------- */
+const DIMENSIONS = {
+  brand: { kind:'brand', field:'categoryId', label:'מותג', noneLabel:'ללא מותג', addLabel:'+ מותג' },
+  type:  { kind:'type',  field:'typeId',     label:'סוג מוצר', noneLabel:'ללא סוג', addLabel:'+ סוג' },
+};
+function categoriesOfKind(supplier, kind){
+  return supplier.categories.filter(c => c.kind === kind);
 }
-function openCategoryForm(supplierId, categoryId){
+function getGroupProducts(supplier, field, groupId){
+  return supplier.products.filter(p => (p[field]||null) === (groupId||null));
+}
+function nextCategorySortOrder(supplier, kind){
+  const list = categoriesOfKind(supplier, kind);
+  return list.length ? Math.max(...list.map(c=>c.sortOrder||0)) + 1 : 1;
+}
+function openCategoryForm(supplierId, categoryId, kind){
   state.editingProductSupplierId = supplierId;
   state.editingCategoryId = categoryId;
+  if(!categoryId) state.newCategoryKind = kind;
   goTo('admin-category-form');
 }
 async function saveCategoryForm(){
@@ -920,10 +949,11 @@ async function saveCategoryForm(){
       const c = supplier.categories.find(c=>c.id===state.editingCategoryId);
       c.name = name;
     } else {
-      const sortOrder = nextCategorySortOrder(supplier);
-      const { data, error } = await sb.from('categories').insert({ supplier_id: supplier.id, name, sort_order: sortOrder }).select().single();
+      const kind = state.newCategoryKind || 'brand';
+      const sortOrder = nextCategorySortOrder(supplier, kind);
+      const { data, error } = await sb.from('categories').insert({ supplier_id: supplier.id, name, kind, sort_order: sortOrder }).select().single();
       if(error) throw error;
-      supplier.categories.push({ id: data.id, name, sortOrder });
+      supplier.categories.push({ id: data.id, name, kind, sortOrder });
     }
     state.editingCategoryId = null;
     goTo('admin-products');
@@ -934,34 +964,41 @@ async function deleteCategory(supplierId, categoryId){
     const { error } = await sb.from('categories').delete().eq('id', categoryId);
     if(error) throw error;
     const supplier = findSupplier(supplierId);
+    const cat = supplier.categories.find(c=>c.id===categoryId);
+    const field = cat && cat.kind==='type' ? 'typeId' : 'categoryId';
     supplier.categories = supplier.categories.filter(c=>c.id!==categoryId);
-    supplier.products.forEach(p => { if(p.categoryId===categoryId) p.categoryId = null; });
+    supplier.products.forEach(p => { if(p[field]===categoryId) p[field] = null; });
     render();
   }catch(err){ showError('שגיאה במחיקת הקטגוריה: ' + err.message); }
 }
-async function persistCategoryOrder(supplier){
+async function persistCategoryOrder(categories, supplierId){
   try{
-    const rows = supplier.categories.map(c => ({ id:c.id, supplier_id:supplier.id, name:c.name, sort_order:c.sortOrder }));
+    const rows = categories.map(c => ({ id:c.id, supplier_id:supplierId, name:c.name, kind:c.kind, sort_order:c.sortOrder }));
     const { error } = await sb.from('categories').upsert(rows);
     if(error) throw error;
   }catch(err){ showError('שגיאה בשמירת סדר הקטגוריות: ' + err.message); }
 }
 function moveCategory(supplierId, categoryId, direction){
   const supplier = findSupplier(supplierId);
-  const idx = supplier.categories.findIndex(c=>c.id===categoryId);
+  const cat = supplier.categories.find(c=>c.id===categoryId);
+  if(!cat) return;
+  const list = categoriesOfKind(supplier, cat.kind);
+  const idx = list.findIndex(c=>c.id===categoryId);
   const swapIdx = idx + direction;
-  if(idx===-1 || swapIdx<0 || swapIdx>=supplier.categories.length) return;
-  const a = supplier.categories[idx], b = supplier.categories[swapIdx];
+  if(idx===-1 || swapIdx<0 || swapIdx>=list.length) return;
+  const a = list[idx], b = list[swapIdx];
   const tmp = a.sortOrder; a.sortOrder = b.sortOrder; b.sortOrder = tmp;
-  supplier.categories[idx] = b; supplier.categories[swapIdx] = a;
   render();
-  persistCategoryOrder(supplier);
+  persistCategoryOrder([a,b], supplierId);
 }
-function categoryKey(supplierId, categoryId){ return supplierId + ':' + (categoryId || 'none'); }
+function categoryKey(supplierId, categoryId, kind){
+  return categoryId ? (supplierId + ':' + categoryId) : (supplierId + ':none:' + kind);
+}
 function collapseAllCategories(supplier){
   state.collapsedCategories = state.collapsedCategories || {};
   supplier.categories.forEach(c => { state.collapsedCategories[categoryKey(supplier.id, c.id)] = true; });
-  state.collapsedCategories[categoryKey(supplier.id, null)] = true;
+  state.collapsedCategories[categoryKey(supplier.id, null, 'brand')] = true;
+  state.collapsedCategories[categoryKey(supplier.id, null, 'type')] = true;
 }
 function toggleCategoryCollapse(key){
   state.collapsedCategories = state.collapsedCategories || {};
@@ -1022,13 +1059,13 @@ function handleImportFile(input){
       const seenInFile = new Set();
 
       const parsed = dataRows
-        .map(r => ({ name: String(r[0]||'').trim(), categoryName: String(r[1]||'').trim() }))
+        .map(r => ({ name: String(r[0]||'').trim(), categoryName: String(r[1]||'').trim(), typeName: String(r[2]||'').trim() }))
         .filter(r => r.name)
         .map(r => {
           const key = r.name.toLowerCase();
           const duplicate = existingNames.has(key) || seenInFile.has(key);
           seenInFile.add(key);
-          return { name: r.name, categoryName: r.categoryName, duplicate, include: !duplicate };
+          return { name: r.name, categoryName: r.categoryName, typeName: r.typeName, duplicate, include: !duplicate };
         });
 
       if(!parsed.length){ showError('לא נמצאו שורות מוצר תקינות בקובץ'); return; }
@@ -1049,42 +1086,45 @@ function cancelImport(){
   state.importRows = null; state.importFileName = null;
   render();
 }
+async function resolveOrCreateCategories(supplier, names, kind){
+  const nameToId = {};
+  categoriesOfKind(supplier, kind).forEach(c => { nameToId[c.name.trim().toLowerCase()] = c.id; });
+  const toCreate = [...new Set(names.filter(Boolean))].filter(n => !nameToId[n.toLowerCase()]);
+  if(toCreate.length){
+    let nextOrder = nextCategorySortOrder(supplier, kind);
+    const payload = toCreate.map(n => ({ supplier_id: supplier.id, name: n, kind, sort_order: nextOrder++ }));
+    const { data, error } = await sb.from('categories').insert(payload).select();
+    if(error) throw error;
+    data.forEach(c => {
+      supplier.categories.push({ id:c.id, name:c.name, kind:c.kind, sortOrder:c.sort_order });
+      nameToId[c.name.trim().toLowerCase()] = c.id;
+    });
+  }
+  return nameToId;
+}
 async function confirmImport(){
   const supplier = findSupplier(state.importSupplierId);
   const rowsToImport = state.importRows.filter(r=>r.include);
   if(!supplier || rowsToImport.length===0) return;
   state.importing = true; render();
   try{
-    // resolve/create categories referenced in this batch
-    const neededCategoryNames = [...new Set(rowsToImport.map(r => r.categoryName).filter(Boolean))];
-    const nameToId = {};
-    supplier.categories.forEach(c => { nameToId[c.name.trim().toLowerCase()] = c.id; });
+    const brandNameToId = await resolveOrCreateCategories(supplier, rowsToImport.map(r=>r.categoryName), 'brand');
+    const typeNameToId = await resolveOrCreateCategories(supplier, rowsToImport.map(r=>r.typeName), 'type');
 
-    const toCreate = neededCategoryNames.filter(n => !nameToId[n.toLowerCase()]);
-    if(toCreate.length){
-      let nextCatOrder = nextCategorySortOrder(supplier);
-      const catPayload = toCreate.map(n => ({ supplier_id: supplier.id, name: n, sort_order: nextCatOrder++ }));
-      const { data: newCats, error: catErr } = await sb.from('categories').insert(catPayload).select();
-      if(catErr) throw catErr;
-      newCats.forEach(c => {
-        supplier.categories.push({ id:c.id, name:c.name, sortOrder:c.sort_order });
-        nameToId[c.name.trim().toLowerCase()] = c.id;
-      });
-    }
-
-    // assign category_id + a per-category sort_order to each row
+    // assign category_id/type_id + a per-brand-group sort_order to each row
     const nextOrderByGroup = {};
     const payload = rowsToImport.map(r => {
-      const categoryId = r.categoryName ? nameToId[r.categoryName.toLowerCase()] : null;
+      const categoryId = r.categoryName ? brandNameToId[r.categoryName.toLowerCase()] : null;
+      const typeId = r.typeName ? typeNameToId[r.typeName.toLowerCase()] : null;
       const groupKey = categoryId || 'none';
       if(!(groupKey in nextOrderByGroup)) nextOrderByGroup[groupKey] = nextSortOrder(supplier, categoryId);
       const sortOrder = nextOrderByGroup[groupKey]++;
-      return { supplier_id: supplier.id, name: r.name, category_id: categoryId, sort_order: sortOrder };
+      return { supplier_id: supplier.id, name: r.name, category_id: categoryId, type_id: typeId, sort_order: sortOrder };
     });
 
     const { data, error } = await sb.from('products').insert(payload).select();
     if(error) throw error;
-    data.forEach(p => supplier.products.push({ id:p.id, name:p.name, sortOrder:p.sort_order, categoryId:p.category_id }));
+    data.forEach(p => supplier.products.push({ id:p.id, name:p.name, sortOrder:p.sort_order, categoryId:p.category_id, typeId:p.type_id }));
 
     state.importRows = null;
     state.importFileName = null;
@@ -1101,15 +1141,20 @@ function exportToExcel(){
   try{
     const wb = XLSX.utils.book_new();
 
-    const supplierRows = [['ספק','איש קשר','טלפון','קטגוריה','מוצר']];
+    const supplierRows = [['ספק','איש קשר','טלפון','מותג','סוג מוצר','מוצר']];
     state.suppliers.forEach(s=>{
       if(s.products.length===0){
-        supplierRows.push([s.name, s.contact||'', s.phone, '', '']);
+        supplierRows.push([s.name, s.contact||'', s.phone, '', '', '']);
       } else {
-        s.categories.forEach(cat=>{
-          getCategoryProducts(s, cat.id).forEach(p => supplierRows.push([s.name, s.contact||'', s.phone, cat.name, p.name]));
+        const typeName = (typeId) => {
+          if(!typeId) return '';
+          const t = s.categories.find(c=>c.id===typeId);
+          return t ? t.name : '';
+        };
+        categoriesOfKind(s, 'brand').forEach(cat=>{
+          getCategoryProducts(s, cat.id).forEach(p => supplierRows.push([s.name, s.contact||'', s.phone, cat.name, typeName(p.typeId), p.name]));
         });
-        getCategoryProducts(s, null).forEach(p => supplierRows.push([s.name, s.contact||'', s.phone, '', p.name]));
+        getCategoryProducts(s, null).forEach(p => supplierRows.push([s.name, s.contact||'', s.phone, '', typeName(p.typeId), p.name]));
       }
     });
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(supplierRows), 'ספקים ומוצרים');
@@ -1165,6 +1210,8 @@ function duplicateOrder(id){
     supplierId: supplier ? order.supplierId : null,
     qty, unit, notes, noteOpen: {},
   };
+  if(supplier) collapseAllCategories(supplier);
+  state.checklistViewMode = 'brand';
   goTo('order-branch-date');
 }
 
@@ -1362,7 +1409,7 @@ function screenSupplierForm(){
 }
 
 /* --- Admin: Products of a supplier --- */
-function renderProductRow(supplier, p){
+function renderProductRow(supplier, p, dimension){
   if(state.bulkMode){
     const checked = !!(state.bulkSelected && state.bulkSelected[p.id]);
     return `
@@ -1371,14 +1418,29 @@ function renderProductRow(supplier, p){
       <div class="check" style="border:2px solid var(--border);width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex:none;${checked?'background:var(--success);border-color:var(--success);color:#fff':''}">${checked?'✓':''}</div>
     </div>`;
   }
+
+  // manual reordering (↕) always operates on the brand dimension, since sort_order
+  // is scoped to the brand grouping; the type view is a read-only alternate lens.
+  if(dimension.kind !== 'brand'){
+    return `
+    <div class="list-item">
+      <div class="info"><div class="name">${p.name}</div></div>
+      <div class="acts">
+        <div class="icon-btn" onclick="openProductForm('${supplier.id}','${p.id}')">✎</div>
+        <div class="icon-btn danger" onclick="deleteProduct('${supplier.id}','${p.id}')">🗑</div>
+      </div>
+    </div>`;
+  }
+
   const group = getCategoryProducts(supplier, p.categoryId);
   const idx = group.findIndex(x=>x.id===p.id);
   const last = group.length - 1;
   const expanded = state.expandedReorderId === p.id;
   let panel = '';
   if(expanded){
-    const categoryOptions = [`<option value="">ללא קטגוריה</option>`].concat(
-      supplier.categories.map(c=>`<option value="${c.id}" ${(p.categoryId||'')===c.id?'selected':''}>${c.name}</option>`)
+    const brandCats = categoriesOfKind(supplier, 'brand');
+    const categoryOptions = [`<option value="">ללא מותג</option>`].concat(
+      brandCats.map(c=>`<option value="${c.id}" ${(p.categoryId||'')===c.id?'selected':''}>${c.name}</option>`)
     ).join('');
     panel = `
     <div class="reorder-panel">
@@ -1393,9 +1455,9 @@ function renderProductRow(supplier, p){
         <input class="pos-input mono" type="text" inputmode="numeric" value="${idx+1}" onchange="moveToPosition('${supplier.id}','${p.id}', this.value)">
         <span style="font-size:12px;color:var(--ink-soft)">מתוך ${group.length}</span>
       </div>
-      ${supplier.categories.length>0 ? `
+      ${brandCats.length>0 ? `
       <div class="reorder-row" style="margin-top:8px">
-        <label style="font-size:12.5px;color:var(--ink-soft)">קטגוריה:</label>
+        <label style="font-size:12.5px;color:var(--ink-soft)">מותג:</label>
         <select onchange="setProductCategory('${supplier.id}','${p.id}', this.value)">${categoryOptions}</select>
       </div>` : ''}
     </div>`;
@@ -1413,12 +1475,13 @@ function renderProductRow(supplier, p){
   </div>${panel}`;
 }
 
-function renderCategorySection(supplier, categoryId, categoryName){
-  const products = getCategoryProducts(supplier, categoryId);
-  const key = categoryKey(supplier.id, categoryId);
+function renderCategorySection(supplier, categoryId, categoryName, dimension){
+  const products = getGroupProducts(supplier, dimension.field, categoryId);
+  const key = categoryKey(supplier.id, categoryId, dimension.kind);
   const collapsed = !!state.collapsedCategories[key];
-  const catIdx = categoryId ? supplier.categories.findIndex(c=>c.id===categoryId) : -1;
-  const catLast = supplier.categories.length - 1;
+  const list = categoriesOfKind(supplier, dimension.kind);
+  const catIdx = categoryId ? list.findIndex(c=>c.id===categoryId) : -1;
+  const catLast = list.length - 1;
   const headerActs = categoryId ? `
     <div class="icon-btn ${catIdx===0?'disabled':''}" onclick="moveCategory('${supplier.id}','${categoryId}',-1)">▲</div>
     <div class="icon-btn ${catIdx===catLast?'disabled':''}" onclick="moveCategory('${supplier.id}','${categoryId}',1)">▼</div>
@@ -1431,32 +1494,40 @@ function renderCategorySection(supplier, categoryId, categoryName){
       <div class="category-title"><span class="chevron ${collapsed?'collapsed':''}">▾</span>${categoryName}<span class="category-count">${products.length}</span></div>
       <div class="acts" onclick="event.stopPropagation()">${headerActs}</div>
     </div>
-    ${!collapsed ? `<div class="category-body">${products.length ? products.map(p=>renderProductRow(supplier,p)).join('') : `<div class="empty" style="padding:14px"><div class="e-sub">אין מוצרים בקטגוריה זו</div></div>`}</div>` : ''}
+    ${!collapsed ? `<div class="category-body">${products.length ? products.map(p=>renderProductRow(supplier,p,dimension)).join('') : `<div class="empty" style="padding:14px"><div class="e-sub">אין מוצרים כאן</div></div>`}</div>` : ''}
   </div>`;
 }
 
 function renderProductRows(supplier, search){
   const term = (search||'').trim().toLowerCase();
+  const dimension = DIMENSIONS[state.productViewMode] || DIMENSIONS.brand;
 
   if(term){
     const filtered = supplier.products.filter(p => p.name.toLowerCase().includes(term));
     if(filtered.length===0){
       return `<div class="empty"><div class="e-icon">🔍</div><div class="e-title">לא נמצאו מוצרים תואמים</div></div>`;
     }
-    return `<div class="card">${filtered.map(p => renderProductRow(supplier, p)).join('')}</div>`;
+    return `<div class="card">${filtered.map(p => renderProductRow(supplier, p, dimension)).join('')}</div>`;
   }
 
   if(supplier.products.length===0){
     return `<div class="card"><div class="empty"><div class="e-icon">📦</div><div class="e-title">אין מוצרים לספק זה</div><div class="e-sub">הוסף מוצר ראשון</div></div></div>`;
   }
 
+  const list = categoriesOfKind(supplier, dimension.kind);
   let html = '';
-  supplier.categories.forEach(cat => { html += renderCategorySection(supplier, cat.id, cat.name); });
-  const uncategorized = getCategoryProducts(supplier, null);
-  if(uncategorized.length>0 || supplier.categories.length===0){
-    html += renderCategorySection(supplier, null, 'ללא קטגוריה');
+  list.forEach(cat => { html += renderCategorySection(supplier, cat.id, cat.name, dimension); });
+  const uncategorized = getGroupProducts(supplier, dimension.field, null);
+  if(uncategorized.length>0 || list.length===0){
+    html += renderCategorySection(supplier, null, dimension.noneLabel, dimension);
   }
   return html;
+}
+
+function setProductViewMode(mode){
+  state.productViewMode = mode;
+  state.expandedReorderId = null;
+  render();
 }
 
 function filterProductRows(val){
@@ -1468,30 +1539,38 @@ function filterProductRows(val){
 
 function renderBulkBar(supplier){
   if(!state.bulkMode) return '';
+  const dimension = DIMENSIONS[state.productViewMode] || DIMENSIONS.brand;
   const count = bulkSelectedCount();
-  const options = [`<option value="">ללא קטגוריה</option>`].concat(
-    supplier.categories.map(c=>`<option value="${c.id}">${c.name}</option>`)
+  const options = [`<option value="">${dimension.noneLabel}</option>`].concat(
+    categoriesOfKind(supplier, dimension.kind).map(c=>`<option value="${c.id}">${c.name}</option>`)
   ).join('');
   return `
   <div class="footer-bar" style="gap:8px;flex-wrap:wrap">
     <div class="count" style="flex:none">${count} נבחרו</div>
     <select id="f-bulk-category" style="flex:1;min-width:110px;padding:10px;border-radius:10px;border:1.5px solid var(--border);font-family:'Heebo';font-size:14px">${options}</select>
-    <button class="btn btn-primary btn-sm" ${count===0?'disabled':''} onclick="bulkMoveSelected('${supplier.id}')">העבר לקטגוריה</button>
+    <button class="btn btn-primary btn-sm" ${count===0?'disabled':''} onclick="bulkMoveSelected('${supplier.id}')">העבר ל${dimension.label}</button>
   </div>`;
 }
 
 function screenAdminProducts(){
   const supplier = findSupplier(state.editingProductSupplierId);
+  const mode = state.productViewMode || 'brand';
+  const dimension = DIMENSIONS[mode];
+  const hasCatsInMode = categoriesOfKind(supplier, dimension.kind).length > 0;
   return `
   ${topbar(supplier.name, 'ניהול מוצרים', "goTo('admin-suppliers')")}
   <div class="content">
+    <div class="tabs">
+      <div class="tab ${mode==='brand'?'active':''}" onclick="setProductViewMode('brand')">לפי מותג</div>
+      <div class="tab ${mode==='type'?'active':''}" onclick="setProductViewMode('type')">לפי סוג מוצר</div>
+    </div>
     <div class="field">
       <input id="f-product-search" type="text" placeholder="🔍 חיפוש בכל המוצרים..." value="${state.productSearch||''}" oninput="filterProductRows(this.value)">
     </div>
     <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
-      <button class="btn btn-secondary btn-sm" style="flex:1" onclick="openCategoryForm('${supplier.id}', null)">+ קטגוריה</button>
-      ${supplier.products.length>1 ? `<button class="btn btn-secondary btn-sm" style="flex:1" onclick="sortProductsAlphabetically('${supplier.id}')">מיין א-ב</button>` : ''}
-      ${supplier.categories.length>0 && supplier.products.length>1 ? `<button class="btn ${state.bulkMode?'btn-primary':'btn-secondary'} btn-sm" style="flex:1" onclick="toggleBulkMode()">${state.bulkMode ? '✕ ביטול בחירה' : '☑️ בחירה מרובה'}</button>` : ''}
+      <button class="btn btn-secondary btn-sm" style="flex:1" onclick="openCategoryForm('${supplier.id}', null, '${dimension.kind}')">${dimension.addLabel}</button>
+      ${mode==='brand' && supplier.products.length>1 ? `<button class="btn btn-secondary btn-sm" style="flex:1" onclick="sortProductsAlphabetically('${supplier.id}')">מיין א-ב</button>` : ''}
+      ${hasCatsInMode && supplier.products.length>1 ? `<button class="btn ${state.bulkMode?'btn-primary':'btn-secondary'} btn-sm" style="flex:1" onclick="toggleBulkMode()">${state.bulkMode ? '✕ ביטול בחירה' : '☑️ בחירה מרובה'}</button>` : ''}
     </div>
     <div id="product-list-container">
       ${renderProductRows(supplier, state.productSearch)}
@@ -1504,23 +1583,35 @@ function screenAdminProducts(){
 function screenProductForm(){
   const supplier = findSupplier(state.editingProductSupplierId);
   const editing = state.editingProductId ? supplier.products.find(p=>p.id===state.editingProductId) : null;
-  const categoryField = supplier.categories.length>0
+  const brandCats = categoriesOfKind(supplier, 'brand');
+  const typeCats = categoriesOfKind(supplier, 'type');
+  const brandField = brandCats.length>0
     ? `<div class="field">
-        <label>קטגוריה</label>
+        <label>מותג</label>
         <select id="f-prod-category">
-          <option value="">ללא קטגוריה</option>
-          ${supplier.categories.map(c=>`<option value="${c.id}" ${editing && editing.categoryId===c.id?'selected':''}>${c.name}</option>`).join('')}
+          <option value="">ללא מותג</option>
+          ${brandCats.map(c=>`<option value="${c.id}" ${editing && editing.categoryId===c.id?'selected':''}>${c.name}</option>`).join('')}
         </select>
       </div>`
     : `<input type="hidden" id="f-prod-category" value="">`;
+  const typeField = typeCats.length>0
+    ? `<div class="field">
+        <label>סוג מוצר</label>
+        <select id="f-prod-type">
+          <option value="">ללא סוג</option>
+          ${typeCats.map(c=>`<option value="${c.id}" ${editing && editing.typeId===c.id?'selected':''}>${c.name}</option>`).join('')}
+        </select>
+      </div>`
+    : `<input type="hidden" id="f-prod-type" value="">`;
   return `
   ${topbar(editing ? 'עריכת מוצר' : 'מוצר חדש', supplier.name, "openSupplierProducts('"+supplier.id+"')")}
   <div class="content">
     <div class="field">
       <label>שם המוצר</label>
-      <input id="f-prod-name" type="text" placeholder="לדוגמה: גליל נייר" value="${editing ? editing.name : ''}">
+      <input id="f-prod-name" type="text" placeholder="לדוגמה: פסטה פנה" value="${editing ? editing.name : ''}">
     </div>
-    ${categoryField}
+    ${brandField}
+    ${typeField}
     <div style="font-size:12.5px;color:var(--ink-soft);margin-bottom:14px">את יחידת המידה (יחידות / ארגז) בוחרים בזמן ההזמנה, לכל מוצר בנפרד.</div>
     <button class="btn btn-primary btn-block" onclick="saveProductForm()">שמירה</button>
   </div>`;
@@ -1529,12 +1620,14 @@ function screenProductForm(){
 function screenCategoryForm(){
   const supplier = findSupplier(state.editingProductSupplierId);
   const editing = state.editingCategoryId ? supplier.categories.find(c=>c.id===state.editingCategoryId) : null;
+  const kind = editing ? editing.kind : (state.newCategoryKind || 'brand');
+  const dimension = DIMENSIONS[kind];
   return `
-  ${topbar(editing ? 'עריכת קטגוריה' : 'קטגוריה חדשה', supplier.name, "goTo('admin-products')")}
+  ${topbar(editing ? ('עריכת ' + dimension.label) : (dimension.label + ' חדש/ה'), supplier.name, "goTo('admin-products')")}
   <div class="content">
     <div class="field">
-      <label>שם הקטגוריה</label>
-      <input id="f-cat-name" type="text" placeholder="לדוגמה: אריזות ניילון" value="${editing ? editing.name : ''}">
+      <label>שם ה${dimension.label}</label>
+      <input id="f-cat-name" type="text" placeholder="${kind==='brand' ? 'לדוגמה: ברילה' : 'לדוגמה: פסטות'}" value="${editing ? editing.name : ''}">
     </div>
     <button class="btn btn-primary btn-block" onclick="saveCategoryForm()">שמירה</button>
   </div>`;
@@ -1594,7 +1687,7 @@ function screenAdminIO(){
     if(state.importSupplierId){
       importSection += `
       <div class="field" style="margin-top:14px">
-        <label>קובץ Excel / CSV (עמודה 1: שם מוצר · עמודה 2: קטגוריה — אופציונלי)</label>
+        <label>קובץ Excel / CSV (עמודה 1: שם מוצר · עמודה 2: מותג · עמודה 3: סוג מוצר — שתיהן אופציונליות)</label>
         <input type="file" accept=".xlsx,.xls,.csv" onchange="handleImportFile(this)">
       </div>`;
     }
@@ -1604,6 +1697,7 @@ function screenAdminIO(){
           <div class="info">
             <div class="name" style="${r.include?'':'text-decoration:line-through;color:var(--ink-soft)'}">${r.name}</div>
             ${r.categoryName ? `<div class="meta">🏷️ ${r.categoryName}</div>` : ''}
+            ${r.typeName ? `<div class="meta">📦 ${r.typeName}</div>` : ''}
             ${r.duplicate ? `<div class="meta" style="color:var(--wood)">⚠️ כבר קיים ברשימה — לא ייובא כברירת מחדל</div>` : ''}
           </div>
           <div class="check" style="border:2px solid var(--border);width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex:none;${r.include?'background:var(--success);border-color:var(--success);color:#fff':''}">${r.include?'✓':''}</div>
@@ -1740,10 +1834,10 @@ function renderChecklistItemRow(p){
   </div>`;
 }
 
-function renderChecklistCategorySection(supplier, categoryId, categoryName){
-  const products = getCategoryProducts(supplier, categoryId);
+function renderChecklistCategorySection(supplier, categoryId, categoryName, dimension){
+  const products = getGroupProducts(supplier, dimension.field, categoryId);
   if(products.length===0) return '';
-  const key = categoryKey(supplier.id, categoryId);
+  const key = categoryKey(supplier.id, categoryId, dimension.kind);
   const collapsed = !!state.collapsedCategories[key];
   const selectedInCategory = products.filter(p => (state.order.qty[p.id]||0) > 0).length;
   return `
@@ -1758,6 +1852,7 @@ function renderChecklistCategorySection(supplier, categoryId, categoryName){
 
 function renderChecklistRows(supplier, search){
   const term = (search||'').trim().toLowerCase();
+  const dimension = DIMENSIONS[state.checklistViewMode] || DIMENSIONS.brand;
 
   if(term){
     const filtered = supplier.products.filter(p => p.name.toLowerCase().includes(term));
@@ -1771,9 +1866,10 @@ function renderChecklistRows(supplier, search){
     return `<div class="empty"><div class="e-icon">📦</div><div class="e-title">לספק זה אין מוצרים מוגדרים</div></div>`;
   }
 
+  const list = categoriesOfKind(supplier, dimension.kind);
   let html = '';
-  supplier.categories.forEach(cat => { html += renderChecklistCategorySection(supplier, cat.id, cat.name); });
-  html += renderChecklistCategorySection(supplier, null, 'ללא קטגוריה');
+  list.forEach(cat => { html += renderChecklistCategorySection(supplier, cat.id, cat.name, dimension); });
+  html += renderChecklistCategorySection(supplier, null, dimension.noneLabel, dimension);
   return html;
 }
 function filterChecklistRows(val){
@@ -1782,16 +1878,34 @@ function filterChecklistRows(val){
   const container = document.getElementById('checklist-items-container');
   if(container) container.innerHTML = renderChecklistRows(supplier, val);
 }
+function setChecklistViewMode(mode){
+  state.checklistViewMode = mode;
+  const supplier = findSupplier(state.order.supplierId);
+  const container = document.getElementById('checklist-items-container');
+  if(container) container.innerHTML = renderChecklistRows(supplier, state.checklistSearch);
+  const tabs = document.getElementById('checklist-view-tabs');
+  if(tabs){
+    tabs.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    tabs.querySelector(`[data-mode="${mode}"]`).classList.add('active');
+  }
+}
 
 function screenOrderChecklist(){
   const branch = findBranch(state.order.branchId);
   const supplier = findSupplier(state.order.supplierId);
   const count = selectedCount();
+  const mode = state.checklistViewMode || 'brand';
+  const hasTypes = categoriesOfKind(supplier, 'type').length > 0;
   const topAction = `<button class="btn btn-primary btn-sm" ${count===0?'disabled':''} onclick="goToConfirm()">לאישור ההזמנה</button>`;
   return `
   ${topbar(supplier.name, branch.name + ' · ' + dateLabel(state.order.date, state.order.noDate), "goTo('order-supplier')", topAction)}
   ${stepIndicator(3)}
   <div class="content">
+    ${hasTypes ? `
+    <div class="tabs" id="checklist-view-tabs">
+      <div class="tab ${mode==='brand'?'active':''}" data-mode="brand" onclick="setChecklistViewMode('brand')">לפי מותג</div>
+      <div class="tab ${mode==='type'?'active':''}" data-mode="type" onclick="setChecklistViewMode('type')">לפי סוג מוצר</div>
+    </div>` : ''}
     ${supplier.products.length>4 ? `<div class="field"><input id="f-checklist-search" type="text" placeholder="🔍 חיפוש בכל המוצרים..." value="${state.checklistSearch||''}" oninput="filterChecklistRows(this.value)"></div>` : ''}
     <div id="checklist-items-container">
       ${renderChecklistRows(supplier, state.checklistSearch)}
