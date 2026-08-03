@@ -420,6 +420,8 @@ let state = {
   expandedReorderId: null,
   editingCategoryId: null,
   collapsedCategories: {},
+  bulkMode: false,
+  bulkSelected: {},
 
   order: { branchId:null, date:'', noDate:false, supplierId:null, qty:{}, unit:{}, notes:{}, noteOpen:{} },
   orders: [],
@@ -741,6 +743,8 @@ function openSupplierProducts(id){
   state.editingProductSupplierId = id;
   state.productSearch = '';
   state.expandedReorderId = null;
+  state.bulkMode = false;
+  state.bulkSelected = {};
   goTo('admin-products');
 }
 function openProductForm(supplierId, productId){
@@ -846,6 +850,40 @@ function setProductCategory(supplierId, productId, categoryId){
   p.sortOrder = nextSortOrder(supplier, catId, productId);
   render();
   persistProductOrder([p], supplierId);
+}
+function toggleBulkMode(){
+  state.bulkMode = !state.bulkMode;
+  state.bulkSelected = {};
+  render();
+}
+function toggleBulkSelect(productId){
+  state.bulkSelected = state.bulkSelected || {};
+  state.bulkSelected[productId] = !state.bulkSelected[productId];
+  render();
+}
+function bulkSelectedCount(){
+  return Object.values(state.bulkSelected||{}).filter(Boolean).length;
+}
+function bulkMoveSelected(supplierId){
+  const supplier = findSupplier(supplierId);
+  const select = document.getElementById('f-bulk-category');
+  if(!select) return;
+  const categoryId = select.value || null;
+  const ids = Object.keys(state.bulkSelected||{}).filter(id => state.bulkSelected[id]);
+  if(ids.length===0) return;
+
+  let nextOrder = nextSortOrder(supplier, categoryId);
+  const touched = [];
+  ids.forEach(id=>{
+    const p = supplier.products.find(x=>x.id===id);
+    if(!p) return;
+    p.categoryId = categoryId;
+    p.sortOrder = nextOrder++;
+    touched.push(p);
+  });
+  state.bulkSelected = {};
+  persistProductOrder(touched, supplierId);
+  showSuccess(touched.length + ' מוצרים הועברו');
 }
 function toggleReorderPanel(productId){
   state.expandedReorderId = state.expandedReorderId===productId ? null : productId;
@@ -1319,6 +1357,14 @@ function screenSupplierForm(){
 
 /* --- Admin: Products of a supplier --- */
 function renderProductRow(supplier, p){
+  if(state.bulkMode){
+    const checked = !!(state.bulkSelected && state.bulkSelected[p.id]);
+    return `
+    <div class="list-item" style="cursor:pointer" onclick="toggleBulkSelect('${p.id}')">
+      <div class="info"><div class="name">${p.name}</div></div>
+      <div class="check" style="border:2px solid var(--border);width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex:none;${checked?'background:var(--success);border-color:var(--success);color:#fff':''}">${checked?'✓':''}</div>
+    </div>`;
+  }
   const group = getCategoryProducts(supplier, p.categoryId);
   const idx = group.findIndex(x=>x.id===p.id);
   const last = group.length - 1;
@@ -1414,6 +1460,20 @@ function filterProductRows(val){
   if(container) container.innerHTML = renderProductRows(supplier, val);
 }
 
+function renderBulkBar(supplier){
+  if(!state.bulkMode) return '';
+  const count = bulkSelectedCount();
+  const options = [`<option value="">ללא קטגוריה</option>`].concat(
+    supplier.categories.map(c=>`<option value="${c.id}">${c.name}</option>`)
+  ).join('');
+  return `
+  <div class="footer-bar" style="gap:8px;flex-wrap:wrap">
+    <div class="count" style="flex:none">${count} נבחרו</div>
+    <select id="f-bulk-category" style="flex:1;min-width:110px;padding:10px;border-radius:10px;border:1.5px solid var(--border);font-family:'Heebo';font-size:14px">${options}</select>
+    <button class="btn btn-primary btn-sm" ${count===0?'disabled':''} onclick="bulkMoveSelected('${supplier.id}')">העבר לקטגוריה</button>
+  </div>`;
+}
+
 function screenAdminProducts(){
   const supplier = findSupplier(state.editingProductSupplierId);
   return `
@@ -1422,15 +1482,17 @@ function screenAdminProducts(){
     <div class="field">
       <input id="f-product-search" type="text" placeholder="🔍 חיפוש בכל המוצרים..." value="${state.productSearch||''}" oninput="filterProductRows(this.value)">
     </div>
-    <div style="display:flex;gap:8px;margin-bottom:14px">
+    <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
       <button class="btn btn-secondary btn-sm" style="flex:1" onclick="openCategoryForm('${supplier.id}', null)">+ קטגוריה</button>
       ${supplier.products.length>1 ? `<button class="btn btn-secondary btn-sm" style="flex:1" onclick="sortProductsAlphabetically('${supplier.id}')">מיין א-ב</button>` : ''}
+      ${supplier.categories.length>0 && supplier.products.length>1 ? `<button class="btn ${state.bulkMode?'btn-primary':'btn-secondary'} btn-sm" style="flex:1" onclick="toggleBulkMode()">${state.bulkMode ? '✕ ביטול בחירה' : '☑️ בחירה מרובה'}</button>` : ''}
     </div>
     <div id="product-list-container">
       ${renderProductRows(supplier, state.productSearch)}
     </div>
-    <button class="fab-add" onclick="openProductForm('${supplier.id}', null)">+ הוסף מוצר</button>
-  </div>`;
+    ${state.bulkMode ? '' : `<button class="fab-add" onclick="openProductForm('${supplier.id}', null)">+ הוסף מוצר</button>`}
+  </div>
+  ${renderBulkBar(supplier)}`;
 }
 
 function screenProductForm(){
