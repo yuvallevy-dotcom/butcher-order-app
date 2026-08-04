@@ -760,7 +760,9 @@ function openProductForm(supplierId, productId){
   goTo('admin-product-form');
 }
 function getCategoryProducts(supplier, categoryId){
-  return supplier.products.filter(p => (p.categoryId||null) === (categoryId||null));
+  return supplier.products
+    .filter(p => (p.categoryId||null) === (categoryId||null))
+    .sort((a,b) => (a.sortOrder ?? 999999) - (b.sortOrder ?? 999999));
 }
 function nextSortOrder(supplier, categoryId, excludeProductId){
   const group = getCategoryProducts(supplier, categoryId).filter(p=>p.id!==excludeProductId);
@@ -831,22 +833,6 @@ function moveToPosition(supplierId, productId, val){
   const n = parseInt(val, 10);
   if(!n || isNaN(n)){ render(); return; }
   reorderTo(supplierId, productId, n - 1);
-}
-function sortProductsAlphabetically(supplierId){
-  const supplier = findSupplier(supplierId);
-  const groups = {};
-  supplier.products.forEach(p=>{
-    const key = p.categoryId || 'none';
-    (groups[key] = groups[key]||[]).push(p);
-  });
-  let touched = [];
-  Object.values(groups).forEach(arr=>{
-    arr.sort((a,b) => a.name.localeCompare(b.name, 'he'));
-    arr.forEach((p,i) => p.sortOrder = i+1);
-    touched = touched.concat(arr);
-  });
-  render();
-  persistProductOrder(touched, supplierId);
 }
 function setProductCategory(supplierId, productId, categoryId){
   const supplier = findSupplier(supplierId);
@@ -926,7 +912,9 @@ function categoriesOfKind(supplier, kind){
   return supplier.categories.filter(c => c.kind === kind);
 }
 function getGroupProducts(supplier, field, groupId){
-  return supplier.products.filter(p => (p[field]||null) === (groupId||null));
+  return supplier.products
+    .filter(p => (p[field]||null) === (groupId||null))
+    .sort((a,b) => (a.sortOrder ?? 999999) - (b.sortOrder ?? 999999));
 }
 function nextCategorySortOrder(supplier, kind){
   const list = categoriesOfKind(supplier, kind);
@@ -1569,7 +1557,6 @@ function screenAdminProducts(){
     </div>
     <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
       <button class="btn btn-secondary btn-sm" style="flex:1" onclick="openCategoryForm('${supplier.id}', null, '${dimension.kind}')">${dimension.addLabel}</button>
-      ${mode==='brand' && supplier.products.length>1 ? `<button class="btn btn-secondary btn-sm" style="flex:1" onclick="sortProductsAlphabetically('${supplier.id}')">מיין א-ב</button>` : ''}
       ${hasCatsInMode && supplier.products.length>1 ? `<button class="btn ${state.bulkMode?'btn-primary':'btn-secondary'} btn-sm" style="flex:1" onclick="toggleBulkMode()">${state.bulkMode ? '✕ ביטול בחירה' : '☑️ בחירה מרובה'}</button>` : ''}
     </div>
     <div id="product-list-container">
