@@ -194,14 +194,16 @@
   .list-item:last-child{border-bottom:none;}
   .list-item .info .name{font-weight:600;font-size:15px;}
   .list-item .info .meta{font-size:12px;color:var(--ink-soft);margin-top:2px;}
-  .list-item .acts{display:flex;gap:6px;flex:none;}
+  .acts{display:flex;flex-direction:row;flex-wrap:nowrap;gap:6px;flex:none;}
   .icon-btn{
     width:32px;height:32px;border-radius:9px;border:1.5px solid var(--border);
     background:var(--surface);display:flex;align-items:center;justify-content:center;
-    color:var(--ink-soft);cursor:pointer;font-size:14px;
+    color:var(--ink-soft);cursor:pointer;font-size:14px;flex:none;
   }
   .icon-btn.danger{color:var(--accent);}
   .icon-btn.disabled{opacity:0.25;pointer-events:none;}
+  .category-header .acts{gap:4px;}
+  .category-header .acts .icon-btn{width:27px;height:27px;font-size:12px;border-radius:8px;}
 
   /* Checklist stepper */
   .item-row{
